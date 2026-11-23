@@ -126,7 +126,13 @@ interface Entry {
   labels?: LabelRef[];
   dispose: () => void;
 }
-interface LabelRef { el: HTMLElement; pos: () => THREE.Vector3; surface?: boolean }
+interface LabelRef { el: HTMLElement; pos: () => THREE.Vector3; surface?: boolean; /** pixel offset from the projected point */ off?: [number, number]; /** keep the whole label inside the frame */ clamp?: boolean }
+
+interface View { lat: number; lon: number; dist: number; /** Earth-fixed point the camera looks at (Earth radii, default the centre) */ aim: [number, number, number] }
+
+/** Satellite models are drawn this many CSS pixels across (largest dimension), whatever the zoom. */
+const SAT_PX = 30;
+const MAX_DIST = 40;
 
 function disposeObject(o: THREE.Object3D) {
   o.traverse((n) => {
@@ -155,9 +161,9 @@ export class WebGLBackend implements Backend {
   private entries = new Map<string, Entry>();
   private lineMats = new Set<LineMaterial>();
   private labelLayer: HTMLElement;
-  private cur: { lat: number; lon: number; dist: number };
-  private tgt: { lat: number; lon: number; dist: number };
-  private home: { lat: number; lon: number; dist: number };
+  private cur: View;
+  private tgt: View;
+  private home: View;
   private sunDec: number;
   private size = { w: 1, h: 1 };
   private quality: Quality = 'high';
@@ -182,10 +188,12 @@ export class WebGLBackend implements Backend {
 
   constructor(host: HTMLElement, opts: GlobeOptions, baseUrl: string) {
     this.host = host;
+    this.inset = opts.controls === false ? 0 : 18;
     const v = opts.view ?? { lat: 8, lon: 135, dist: 3.4 };
-    this.cur = { ...v };
-    this.tgt = { ...v };
-    this.home = { ...v };
+    const v0: View = { ...v, aim: [0, 0, 0] };
+    this.cur = { ...v0, aim: [0, 0, 0] };
+    this.tgt = { ...v0, aim: [0, 0, 0] };
+    this.home = { ...v0, aim: [0, 0, 0] };
     this.sunDec = opts.sunDecDeg ?? -12;
 
     this.canvas = document.createElement('canvas');
@@ -450,6 +458,8 @@ export class WebGLBackend implements Backend {
 
   private makeSat(it: SatItem): Entry {
     const model = buildSatellite(it.model, new THREE.Color(it.color).getHex());
+    const bb = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+    const modelExt = Math.max(bb.x, bb.y, bb.z, 0.01);
     const holder = new THREE.Group();
     holder.add(model);
     this.scene.add(holder);
@@ -492,7 +502,9 @@ export class WebGLBackend implements Backend {
       m4.makeBasis(x, y, z);
       holder.quaternion.setFromRotationMatrix(m4);
       holder.position.copy(worldPos);
-      const s = Math.max(0.0002, cam.distanceTo(worldPos) * 0.0165 * (it.size ?? 1));
+      // constant on-screen size: SAT_PX across (times it.size) whatever the camera distance
+      const worldPerPx = (2 * cam.distanceTo(worldPos) * Math.tan((this.camera.fov * D2R) / 2)) / Math.max(1, this.size.h);
+      const s = Math.max(0.00002, ((SAT_PX * (it.size ?? 1)) / modelExt) * worldPerPx);
       holder.scale.setScalar(s);
       // ring orientation
       const { p: P, q: Q } = orbitPlaneBasis(it.orbit, t);
@@ -510,7 +522,7 @@ export class WebGLBackend implements Backend {
     };
     return {
       update,
-      labels: [{ el: label, pos: () => worldPos.clone().add(new THREE.Vector3().copy(worldPos).normalize().multiplyScalar(holder.scale.x * 1.6)) }],
+      labels: [{ el: label, pos: () => worldPos, off: [SAT_PX * (it.size ?? 1) * 0.55, -SAT_PX * (it.size ?? 1) * 0.35], clamp: true }],
       dispose: () => {
         this.scene.remove(holder, ringGroup, nadir, dot);
         disposeSatelliteModel(model);
@@ -736,14 +748,18 @@ export class WebGLBackend implements Backend {
 
   // ------------------------------------------------------------ view
 
-  focus(lat: number, lon: number, dist: number | undefined, animate: boolean): void {
+  focus(lat: number, lon: number, dist: number | undefined, animate: boolean, aim?: { lat: number; lon: number; r: number }): void {
     this.tgt.lat = Math.max(-88, Math.min(88, lat));
     this.tgt.lon = this.cur.lon + wrap180(lon - this.cur.lon);
-    if (dist !== undefined) this.tgt.dist = Math.max(1.18, Math.min(18, dist));
-    if (!animate) { this.cur = { ...this.tgt }; }
+    if (dist !== undefined) this.tgt.dist = Math.max(1.18, Math.min(MAX_DIST, dist));
+    const a = aim ? ef(aim.lat, aim.lon, aim.r) : null;
+    this.tgt.aim = a ? [a.x, a.y, a.z] : [0, 0, 0];
+    if (!animate) { this.cur = { ...this.tgt, aim: [...this.tgt.aim] }; }
+    // "Home" (the 0 key) returns to the last framing a station asked for
+    this.home = { ...this.tgt, aim: [...this.tgt.aim] };
   }
-  zoomBy(f: number): void { this.tgt.dist = Math.max(1.18, Math.min(18, this.tgt.dist * f)); }
-  resetView(): void { this.focus(this.home.lat, this.home.lon, this.home.dist, true); }
+  zoomBy(f: number): void { this.tgt.dist = Math.max(1.18, Math.min(MAX_DIST, this.tgt.dist * f)); }
+  resetView(): void { this.tgt = { ...this.home, aim: [...this.home.aim] }; this.tgt.lon = this.cur.lon + wrap180(this.home.lon - this.cur.lon); }
   setDescription(text: string): void { this.desc.textContent = text; }
   setSun(decDeg: number): void { this.sunDec = decDeg; }
 
@@ -760,6 +776,9 @@ export class WebGLBackend implements Backend {
   }
   private baseUrlCache(): string { return (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/'; }
 
+  private inset = 18;
+  private controlsInset(): number { return this.inset; }
+
   resize(): void {
     const w = Math.max(1, this.host.clientWidth), h = Math.max(1, this.host.clientHeight);
     this.size = { w, h };
@@ -768,6 +787,8 @@ export class WebGLBackend implements Backend {
     this.camera.aspect = w / h;
     // keep the whole globe framed on narrow / short stages
     this.camera.fov = w / h < 0.9 ? 44 : 32;
+    // the transport buttons sit over the bottom edge: shift the picture up so the Earth is centred in the clear area
+    this.camera.setViewOffset(w, h, 0, this.controlsInset(), w, h);
     this.camera.updateProjectionMatrix();
     this.lineMats.forEach((m) => m.resolution.set(w, h));
     const stars = this.scene.getObjectByName('stars') as THREE.Points | undefined;
@@ -786,6 +807,7 @@ export class WebGLBackend implements Backend {
     this.cur.lon += dl * k;
     this.cur.lat += (this.tgt.lat - this.cur.lat) * k;
     this.cur.dist += (this.tgt.dist - this.cur.dist) * k;
+    for (let i = 0; i < 3; i++) this.cur.aim[i] += (this.tgt.aim[i] - this.cur.aim[i]) * k;
 
     const theta = earthRotationRad(t);
     this.earthGroup.rotation.y = theta;
@@ -793,9 +815,10 @@ export class WebGLBackend implements Backend {
 
     // camera follows the Earth's surface (view lat/lon are Earth-fixed)
     const dir = ef(this.cur.lat, this.cur.lon, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), theta);
-    this.camera.position.copy(dir).multiplyScalar(this.cur.dist);
+    const aim = this.tmpV.set(this.cur.aim[0], this.cur.aim[1], this.cur.aim[2]).applyAxisAngle(new THREE.Vector3(0, 1, 0), theta);
+    this.camera.position.copy(dir).multiplyScalar(this.cur.dist).add(aim);
     this.camera.up.set(0, 1, 0);
-    this.camera.lookAt(0, 0, 0);
+    this.camera.lookAt(aim);
     this.camera.updateMatrixWorld();
 
     const s = sunDirection(t, this.sunDec);
@@ -834,9 +857,17 @@ export class WebGLBackend implements Backend {
       for (const l of e.labels) {
         const p = l.pos();
         v.copy(p).project(this.camera);
-        const hidden = v.z > 1 || v.z < -1 || this.occluded(cam, p, !!l.surface) || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05;
+        const hidden = v.z > 1 || v.z < -1 || this.occluded(cam, p, !!l.surface) || (!l.clamp && (Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05));
         l.el.style.opacity = hidden ? '0' : '1';
-        l.el.style.transform = `translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * h}px)`;
+        let px = ((v.x + 1) / 2) * w + (l.off?.[0] ?? 0), py = ((1 - v.y) / 2) * h + (l.off?.[1] ?? 0);
+        if (l.clamp) {
+          const lw = l.el.offsetWidth || 120, lh = l.el.offsetHeight || 20;
+          // flip to the satellite's left when the label would run off the right edge, then keep it inside the frame
+          if (px + lw > w - 6) px = ((v.x + 1) / 2) * w - (l.off?.[0] ?? 0) - lw;
+          px = Math.min(Math.max(px, 6), Math.max(6, w - 6 - lw));
+          py = Math.min(Math.max(py, lh / 2 + 6), h - lh / 2 - 44);
+        }
+        l.el.style.transform = `translate(${px}px, ${py}px)`;
       }
     }
   }

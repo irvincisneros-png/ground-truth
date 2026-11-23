@@ -257,11 +257,11 @@ export const createAltimeterStation: StationFactory = (env) => {
   return {
     enter() {
       if (first) { first = false; globe.setSimTime(0); globe.setSunDeclination(-12); globe.setTimeScale(60); winStart = 0; }
-      globe.add({ kind: 'sat', id: 'j3', label: 'Sentinel-6 / Jason-3 · 1336 km', orbit: jason.orbit, color: '#ffb547', model: 'altimeter', size: 1.3 });
+      globe.add({ kind: 'sat', id: 'j3', label: 'Sentinel-6 / Jason-3 · 1336 km', orbit: jason.orbit, color: '#ffb547', model: 'altimeter' });
       globe.add({ kind: 'latline', id: 'n66', latDeg: 66, color: '#9fb0d4', label: '66° N' });
       globe.add({ kind: 'latline', id: 's66', latDeg: -66, color: '#9fb0d4', label: '66° S' });
       updateTracks();
-      globe.focus(-4, 150, 3.5, true);
+      globe.focus(-4, 150, 5.0, true);
       env.setLegend([{ color: '#ffb547', label: 'Ground tracks (nadir only)', kind: 'line' }, { color: '#9fb0d4', label: '66° latitude limit', kind: 'line' }]);
       globe.setDescription('Thin ground tracks of a radar altimeter satellite that never goes beyond 66 degrees north or south.');
       window.clearInterval(timer);

@@ -12,7 +12,7 @@ export interface SatItem {
   model: ModelKind;
   /** Draw the orbit ring (default true). */
   showOrbit?: boolean;
-  /** Apparent size multiplier (default 1 = about 70 px across). */
+  /** Apparent size multiplier (default 1 = about 30 px across, constant at any zoom). */
   size?: number;
 }
 
@@ -133,7 +133,8 @@ export interface GlobeApi {
   pause(): void;
   isPlaying(): boolean;
   setSunDeclination(deg: number): void;
-  focus(lat: number, lon: number, dist?: number, animate?: boolean): void;
+  /** `aim` shifts the look-at point to an Earth-fixed position (r in Earth radii) so a distant satellite and the Earth can both be framed. */
+  focus(lat: number, lon: number, dist?: number, animate?: boolean, aim?: { lat: number; lon: number; r: number }): void;
   quality(): Quality;
   onQualityChange(cb: (q: Quality, reason: string) => void): () => void;
   /** A one-line text description of what the globe currently shows (for assistive tech). */
@@ -152,7 +153,7 @@ export interface Backend {
   /** Draw one frame at sim time t. `dt` is real seconds since the previous frame. */
   render(t: number, dt: number): void;
   setSun(decDeg: number): void;
-  focus(lat: number, lon: number, dist: number | undefined, animate: boolean): void;
+  focus(lat: number, lon: number, dist: number | undefined, animate: boolean, aim?: { lat: number; lon: number; r: number }): void;
   zoomBy(factor: number): void;
   resetView(): void;
   setDescription(text: string): void;

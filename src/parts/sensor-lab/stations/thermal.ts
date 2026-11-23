@@ -356,15 +356,16 @@ export const createThermalStation: StationFactory = (env) => {
     const t0 = 2.5 * 3600;
     if (platform === 'himawari') {
       globe.add({ kind: 'disc', id: 'hdisc', lat: 0, lon: 140.7, radiusDeg: footprintRadiusDeg(35786, 10), innerRadiusDeg: footprintRadiusDeg(35786, 45), color: '#4cc38a', opacity: 0.13 });
-      globe.add({ kind: 'sat', id: 'him', label: 'Himawari-9 · 35 786 km', orbit: hima, color: '#4cc38a', model: 'geo', showOrbit: true, size: 1.1 });
-      globe.focus(5, 132, 12.5, true);
+      globe.add({ kind: 'sat', id: 'him', label: 'Himawari-9 · 35 786 km', orbit: hima, color: '#4cc38a', model: 'geo', showOrbit: true });
+      // frame Earth and the satellite together: look at a point a third of the way out, from the south-west so Australia faces us
+      globe.focus(-12, 96, 8.2, true, { lat: 0, lon: 140.7, r: 4.2 });
       env.setCaption('Himawari-9 sits 35 786 km up and turns with the Earth, so it stares at the same disc. Clear view near the middle, a slanted and stretched one near the edge.');
       env.setLegend([{ color: '#4cc38a', label: 'Himawari-9 and its view', kind: 'area' }, { color: '#ff7a59', label: 'Great Barrier Reef', kind: 'area' }]);
     } else {
       const orb = withPass(SATELLITES.noaa20.orbit, 3.5 * 3600, -17, true);
       globe.add({ kind: 'swath', id: 'vsw', orbit: orb, t0: t0 - 3600, t1: t0 + 86400 - 3600, widthKm: 3060, stepS: 60, color: '#7cc4ff', opacity: 0.1 });
-      globe.add({ kind: 'sat', id: 'viirs', label: 'NOAA-20 · 824 km', orbit: orb, color: '#7cc4ff', model: 'polar', size: 1.5 });
-      globe.focus(-18, 148, 3.3, true);
+      globe.add({ kind: 'sat', id: 'viirs', label: 'NOAA-20 · 824 km', orbit: orb, color: '#7cc4ff', model: 'polar' });
+      globe.focus(-18, 148, 4.5, true);
       env.setCaption('NOAA-20 circles pole to pole 14 times a day while the Earth turns beneath it. Its 3060 km swath overlaps, so a reef gets a day pass and a night pass.');
       env.setLegend([{ color: '#7cc4ff', label: 'One day of VIIRS swaths', kind: 'area' }, { color: '#ff7a59', label: 'Great Barrier Reef', kind: 'area' }]);
     }

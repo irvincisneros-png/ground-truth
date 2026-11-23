@@ -274,9 +274,9 @@ export const createMicrowaveStation: StationFactory = (env) => {
       globe.setSunDeclination(20); // June-like: the south pole is in polar night
       globe.setTimeScale(240);
       globe.add({ kind: 'swath', id: 'amsr', orbit: sat.orbit, t0: 0, t1: DAY_S, widthKm: sat.swathKm, stepS: 60, color: '#7cc4ff', opacity: 0.2 });
-      globe.add({ kind: 'sat', id: 'amsr2', label: 'GCOM-W / AMSR2 · 700 km', orbit: sat.orbit, color: '#7cc4ff', model: 'microwave', size: 1.3 });
+      globe.add({ kind: 'sat', id: 'amsr2', label: 'GCOM-W / AMSR2 · 700 km', orbit: sat.orbit, color: '#7cc4ff', model: 'microwave' });
       globe.add({ kind: 'region', id: 'ant', cap: { latDeg: ANTARCTIC_CAP_LAT }, color: '#ffb547', fillOpacity: 0.12, label: 'Antarctica and its sea-ice zone' });
-      globe.focus(-78, 20, 3.0, true);
+      globe.focus(-78, 20, 4.4, true);
       env.setLegend([{ color: '#7cc4ff', label: 'One day of AMSR2 swaths (1450 km wide)', kind: 'area' }, { color: '#ffb547', label: 'Antarctic region', kind: 'area' }]);
       globe.setDescription('Wide microwave swaths cover the whole Antarctic region in a day, including the part in polar night.');
     },

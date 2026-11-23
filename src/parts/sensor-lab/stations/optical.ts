@@ -260,11 +260,11 @@ export const createOpticalStation: StationFactory = (env) => {
       if (first) { first = false; globe.setSimTime(t0 + 600); }
       globe.setSunDeclination(SUN_DEC);
       globe.setTimeScale(120);
-      globe.add({ kind: 'sat', id: 'l8', label: 'Landsat 8 · 705 km', orbit: l8, color: '#4cc38a', model: 'landsat', size: 1.3 });
-      globe.add({ kind: 'sat', id: 'l9', label: 'Landsat 9', orbit: l9, color: '#ffb547', model: 'landsat', size: 1.3 });
+      globe.add({ kind: 'sat', id: 'l8', label: 'Landsat 8 · 705 km', orbit: l8, color: '#4cc38a', model: 'landsat' });
+      globe.add({ kind: 'sat', id: 'l9', label: 'Landsat 9', orbit: l9, color: '#ffb547', model: 'landsat' });
       globe.add({ kind: 'marker', id: 'woon', lat: -34.36, lon: 150.92, label: 'Woonona', color: '#ffffff' });
       updateCoverage();
-      globe.focus(-25, 150, 3.4, true);
+      globe.focus(-25, 150, 4.5, true);
       env.setLegend([{ color: '#4cc38a', label: 'Landsat 8 daytime swaths', kind: 'area' }, { color: '#ffb547', label: 'Landsat 9 (when added)', kind: 'area' }]);
       globe.setDescription('Narrow daytime swaths of Landsat 8 and 9 across the day side of the Earth; the night side has none.');
     },

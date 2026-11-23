@@ -171,7 +171,7 @@ export function createGlobe(container: HTMLElement, opts: GlobeOptions = {}): Gl
     pause() { playing = false; updateUi(); },
     isPlaying() { return playing; },
     setSunDeclination(d) { sunDec = d; backend.setSun(d); },
-    focus(lat, lon, dist, animate = true) { backend.focus(lat, lon, dist, animate && !reduced); },
+    focus(lat, lon, dist, animate = true, aim) { backend.focus(lat, lon, dist, animate && !reduced, aim); },
     quality() { return quality; },
     onQualityChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     setDescription(text) { desc = text; backend.setDescription(text); },

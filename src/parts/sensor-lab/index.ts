@@ -53,12 +53,12 @@ export function mountSensorLab(root: HTMLElement, ctx: SensorLabCtx): () => void
   const live = h('div', { class: 'sl-sr', role: 'status', 'aria-live': 'polite' });
   const tablist = h('div', { class: 'sl-tabs', role: 'tablist', 'aria-label': 'Sensor stations' });
   const progress = h('div', { class: 'sl-progress', 'aria-live': 'polite' });
-  const top = h('header', { class: 'sl-top' }, h('div', { class: 'sl-brand' }, h('span', { class: 'sl-brand-k' }, 'Sensor lab'), h('span', { class: 'sl-brand-t' }, 'Raw signal to derived measurement')), tablist, progress);
+  const top = h('header', { class: 'sl-top' }, tablist, progress);
 
   const globeHost = h('div', { class: 'sl-globe' });
   const caption = h('p', { class: 'sl-gcap' });
   const legend = h('ul', { class: 'sl-legend', 'aria-label': 'Globe key' });
-  const gtitle = h('div', { class: 'sl-ghead' }, h('span', { class: 'sl-dot' }), h('span', null, 'Orbit view'), h('span', { class: 'sl-ghead-sub' }, 'Drag to turn the globe. Arrow keys also rotate; plus and minus zoom.'));
+  const gtitle = h('div', { class: 'sl-ghead' }, h('span', { class: 'sl-dot' }), h('span', null, 'Orbit view'), h('span', { class: 'sl-ghead-sub' }, 'Drag to turn · arrows rotate · + and − zoom'));
   const globePanel = h('section', { class: 'sl-gpanel', 'aria-label': 'Orbit view' }, gtitle, globeHost, h('div', { class: 'sl-gfoot' }, caption, legend));
   const stationPanel = h('section', { class: 'sl-spanel' });
   wrap.append(top, h('div', { class: 'sl-main' }, globePanel, stationPanel), live);
@@ -226,7 +226,7 @@ export function mountSensorLab(root: HTMLElement, ctx: SensorLabCtx): () => void
     legend.replaceChildren();
     globe.clear();
     stations.get(id)!.enter();
-    stationPanel.scrollTop = 0;
+    if (user && wrap.getBoundingClientRect().top < 0) wrap.scrollIntoView({ block: 'start' });
     if (user) { ctx.save(); announce(`${def.tab} station`); }
   }
 
