@@ -7,6 +7,9 @@ import { CLAIMS, EVIDENCE, FOREST_CAUTION, ICE_SHEET, ICE_STATEMENT, LAUNCH_GUES
 import { PEAK_TOLERANCE, RATIO_TOLERANCE, briefingMax } from './scoring';
 import { fmt } from './ui/chart-math';
 import type { DataFiles, Source } from './data/types';
+import { EYES, EYE_IDS, FINISH_LINE, MISSIONS } from './spotter/missions';
+import { correctWords, fillFrame } from './spotter/frame';
+import { latestYear, levelAtCm } from './spotter/sealevel';
 
 const root = document.getElementById('teacher-root')!;
 const base = import.meta.env.BASE_URL;
@@ -53,10 +56,40 @@ function build(d: Partial<DataFiles>, hasLand: boolean) {
 
   root.append(h('div', { class: 't-wrap stack' },
     h('div', { class: 'spread no-print' },
-      h('a', { class: 'btn ghost small', href: base }, 'Open the student lesson'),
+      h('span', { class: 'row', style: 'gap:.5rem;flex-wrap:wrap' },
+        h('a', { class: 'btn ghost small', href: base }, 'Open Satellite Spotter'),
+        h('a', { class: 'btn ghost small', href: `${base}challenge.html` }, 'Open Challenge mode')),
       h('button', { class: 'btn small', type: 'button', onclick: () => window.print() }, 'Print this guide')),
     h('header', null, h('p', { class: 'eyebrow' }, h('span', { class: 'dot' }), 'Teacher guide'), h('h1', null, 'Ground Truth'),
-      h('p', { class: 'muted' }, 'A one-period Year 9 lesson-game. Students judge how strongly satellite evidence supports a climate claim, and find that ground truth can overturn what they predicted.')),
+      h('p', { class: 'muted' }, 'Two modes for NSW Year 9 dot point 4.3.4. Satellite Spotter is the simple default. Challenge mode is the harder lesson-game, where students judge how strongly satellite evidence supports a climate claim.')),
+
+    sec('Quick start (30 seconds): Satellite Spotter',
+      h('p', null, h('strong', null, 'Satellite Spotter'), ' is the default mode and the one to use with a class that struggles with reading. It covers dot point 4.3.4 with one simple loop, repeated for four missions: ice, forest, sea level and reef.'),
+      h('ol', { class: 'stack-sm', style: 'padding-left:1.2rem;margin:.4rem 0 .8rem' },
+        h('li', null, h('strong', null, 'What students do. '), 'Each mission has 5 steps: read the problem, pick the best satellite “eye”, watch it scan, slide a before and after picture, then build a sentence from word chips to earn a stamp.'),
+        h('li', null, h('strong', null, 'How long. '), 'About 40 minutes for all four missions. No typing, no login, and a wrong answer only gives a hint and a retry.'),
+        h('li', null, h('strong', null, 'Run mission 1 together on the board. '), 'Show the ice problem, let the class vote on the eye, press Listen so they hear it read aloud, then build the sentence as a class. Students then do missions 2 to 4 on their own.'),
+        h('li', null, h('strong', null, 'Collect the report card. '), 'At the end each student presses Print (one page) or Copy and pastes the text into the class document. They can type their name on it. Progress is saved on that device, and “Start again” clears it.'),
+        h('li', null, h('strong', null, 'Stronger students. '), 'Send them to Challenge mode (below), which asks them to judge how strongly the evidence supports a claim.')),
+      h('p', null, h('strong', null, 'Optional reward: Orbit Run. '), 'An arcade game on the Spotter start screen (and report card) that drills which sensor measures what and what blocks it. Good after the missions.'),
+      h('p', { class: 'muted small' }, 'Tip: the Listen button reads each screen aloud. It uses the Australian English voice on the device when there is one, and is hidden on a device with no speech voices.')),
+
+    sec('Spotter answer key',
+      tbl(['Mission', 'Best eye and why', 'Why the others are wrong', 'Correct sentence'], MISSIONS.map((m) => [
+        `${m.n}. ${m.title}: ${m.problem}`,
+        `${EYES[m.bestEye].name}: ${m.reasons[m.bestEye]}`,
+        EYE_IDS.filter((id) => id !== m.bestEye).map((id) => `${EYES[id].name}: ${m.reasons[id]}`).join(' '),
+        fillFrame(m.frame, correctWords(m.frame)),
+      ])),
+      h('p', { style: 'margin-top:.8rem' }, h('strong', null, 'Reef bonus question. '), `${MISSIONS[3].bonus!.question} Answer: ${MISSIONS[3].bonus!.reveal}`),
+      d.sealevel
+        ? h('p', null, h('strong', null, 'Sea level slider. '), `It draws the real satellite record (NOAA altimetry, global mean, 1993 to ${Math.floor(latestYear(d.sealevel.gmsl))}) beside a ruler. The sea is about ${Math.round(levelAtCm(d.sealevel.gmsl, latestYear(d.sealevel.gmsl) - 0.25))} cm higher than in 1993, roughly the width of a hand.`)
+        : null,
+      h('p', { class: 'muted small' }, 'Forest wording: the sentence says hot, dry weather made the fires more likely and that climate change makes such weather more common. That follows the published attribution study (van Oldenborgh et al. 2021). It does not say climate change caused the fires.'),
+      h('p', { class: 'muted small' }, `The report card ends with: “${FINISH_LINE}” Pictures for the ice, forest and reef missions are real satellite images; if one has not loaded yet the screen shows “Image coming” instead of a picture.`)),
+
+    h('h2', { style: 'font-size:1.6rem;margin:2.4rem 0 .2rem;border-top:1px solid var(--line);padding-top:1.4rem' }, 'Challenge mode guide'),
+    h('p', { class: 'muted' }, 'The guide below is for Challenge mode (challenge.html), the harder one-period lesson for strong students.'),
 
     sec('At a glance', tbl(['Topic', 'Detail'], [
       ['Syllabus', 'NSW Science 7–10 (2023), Stage 5, Environmental Sustainability, dot point 4.3.4: investigate how satellites collect global data, including data on ocean temperatures, sea levels, and forest and ice cover, and examine how this data is used to evaluate the impact of climate change.'],
