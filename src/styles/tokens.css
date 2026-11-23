@@ -1,0 +1,15 @@
+:root {
+  --bg:#0b1424; --panel:#111d33; --panel-2:#17284a; --line:#2a3d63; --text:#e8eefc; --muted:#9fb0d4;
+  --accent:#ffb547; --good:#4cc38a; --warn:#f2a93b; --bad:#e5636b; --focus:#7cc4ff;
+  --radius:10px; --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+
+  /* Data colours: kept separate from UI colours. Okabe-Ito, tuned for a dark ground. */
+  --d-reef-a:#d55e00; --d-reef-b:#56b4e9; --d-reef-c:#009e73;
+  --d-1:#56b4e9; --d-2:#e69f00; --d-3:#cc79a7; --d-4:#f0e442;
+  --d-ref:#9fb0d4;
+  --d-anom-cold:#3b6fb6; --d-anom-warm:#e08a2e;
+
+  --hair: rgba(124,150,204,.14);
+  --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px rgba(0,0,0,.28);
+  --step--1: .8125rem; --step-0: 1rem; --step-1: 1.2rem; --step-2: 1.55rem; --step-3: clamp(1.9rem, 1.2rem + 2.4vw, 2.9rem);
+}
