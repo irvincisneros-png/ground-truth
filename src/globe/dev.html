@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Globe dev</title>
+<style>html,body{margin:0;height:100%;background:#0b1424}#g{position:absolute;inset:0}</style></head>
+<body><div id="g"></div>
+<script type="module">
+import { createGlobe, SATELLITES, GBR_RING, ANTARCTIC_CAP_LAT, footprintRadiusDeg } from '/src/globe/index.ts';
+const q = new URLSearchParams(location.search);
+const g = createGlobe(document.getElementById('g'), { force2d: q.has('2d'), quality: q.get('quality') || 'high', view: { lat: -15, lon: 140, dist: Number(q.get('dist') || 3.6) }, startPlaying: !q.has('still'), timeScale: 300 });
+window.g = g;
+const s = SATELLITES;
+const demo = q.get('demo') || 'a';
+if(q.get('demo')!=='models') g.setSimTime(Number(q.get('t') || 3*3600));
+if (demo === 'a') {
+  g.add({ kind:'sat', id:'j3', label:'Jason-3 · 1336 km', orbit:s.jason3.orbit, color:'#ffb547', model:'altimeter' });
+  g.add({ kind:'track', id:'j3t', orbit:s.jason3.orbit, t0:0, t1:86400*3, color:'#ffb547', width:1.2, opacity:.9 });
+  g.add({ kind:'sat', id:'n20', label:'NOAA-20 · VIIRS', orbit:s.noaa20.orbit, color:'#7cc4ff', model:'polar' });
+  g.add({ kind:'swath', id:'n20s', orbit:s.noaa20.orbit, t0:-6000, t1:12000, widthKm:3060, color:'#7cc4ff', opacity:.18 });
+  g.add({ kind:'sat', id:'him', label:'Himawari-9', orbit:s.himawari9.orbit, color:'#4cc38a', model:'geo', showOrbit:false });
+  g.add({ kind:'disc', id:'hd', lat:0, lon:140.7, radiusDeg:footprintRadiusDeg(35786, 10), innerRadiusDeg: footprintRadiusDeg(35786, 40), color:'#4cc38a', opacity:.12 });
+  g.add({ kind:'region', id:'gbr', ring:GBR_RING, color:'#ff7a59', fillOpacity:.3, label:'Great Barrier Reef' });
+}
+if (demo === 'b') {
+  g.focus(-75, 0, 2.6, false);
+  g.setSunDeclination(18);
+  g.add({ kind:'sat', id:'am', label:'GCOM-W / AMSR2', orbit:s.amsr2.orbit, color:'#7cc4ff', model:'microwave' });
+  g.add({ kind:'swath', id:'ams', orbit:s.amsr2.orbit, t0:0, t1:86400, widthKm:1450, color:'#7cc4ff', opacity:.2 });
+  g.add({ kind:'region', id:'ant', cap:{latDeg:ANTARCTIC_CAP_LAT}, color:'#ffb547', fillOpacity:.15, label:'Antarctica' });
+}
+if (demo === 'models') {
+  const kinds=['geo','polar','altimeter','landsat','microwave'];
+  g.focus(0,236,2.4,false); g.pause(); g.setSimTime(0); g.setSunDeclination(0);
+  kinds.forEach((m,i)=>{ g.add({kind:'sat',id:m,label:m,orbit:{altKm:700,inclDeg:0,periodS:5900,raanDeg:0,raanRateDegPerDay:0,u0Deg:(i-2)*5.5},color:'#ffb547',model:m,showOrbit:false,size:1.8}); });
+}
+if (demo === 'c') {
+  g.focus(-30, 150, 2.2, false);
+  g.add({ kind:'sat', id:'l8', label:'Landsat 8', orbit:s.landsat8.orbit, color:'#4cc38a', model:'landsat' });
+  g.add({ kind:'sat', id:'l9', label:'Landsat 9', orbit:s.landsat9.orbit, color:'#ffb547', model:'landsat' });
+  g.add({ kind:'swath', id:'l8s', orbit:s.landsat8.orbit, t0:0, t1:86400*2, widthKm:185, color:'#4cc38a', opacity:.4 });
+  g.add({ kind:'marker', id:'m', lat:-34.4, lon:150.9, label:'Woonona', color:'#ffb547' });
+}
+</script></body></html>

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensor lab (dev)</title>
+  <!-- Dev-only page. The shell's tokens.css is used when it exists; the lab falls back to the same values if not. -->
+  <link rel="stylesheet" href="/src/styles/tokens.css" onerror="this.remove()" />
+  <style>html,body{margin:0;background:#0b1424;color:#e8eefc;font-family:system-ui,sans-serif}</style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module">
+    import { mountSensorLab } from '/src/parts/sensor-lab/index.ts';
+    const q = new URLSearchParams(location.search);
+    window.__slDebug = {};
+    const state = q.has('fresh') ? {} : JSON.parse(localStorage.getItem('gt-dev-state') || '{}');
+    const ctx = {
+      state,
+      save() { try { localStorage.setItem('gt-dev-state', JSON.stringify(state)); } catch {} },
+      onDone() { console.log('sensor lab complete'); },
+    };
+    if (q.get('done')) for (const id of q.get('done').split(',')) {
+      state.sensorLab = state.sensorLab || { stations: {} };
+      state.sensorLab.stations[id] = { interactionDone: true, done: q.has('solved'), flags: {}, check: q.has('solved') ? { attempts: 1, firstCorrect: true, solved: true } : undefined };
+    }
+    if (q.get('st')) { state.sensorLab = state.sensorLab || { stations: {} }; state.sensorLab.last = q.get('st'); }
+    window.__lab = { ctx, dispose: mountSensorLab(document.getElementById('app'), ctx) };
+    // optional scripted setup: ?js=<expression using __slDebug>
+    if (q.get('js')) setTimeout(() => { try { new Function('d', q.get('js'))(window.__slDebug); } catch (e) { console.error(e); } }, 600);
+    if (q.get('scroll')) setTimeout(() => { const el = document.querySelector('.sl-spanel'); if (el) el.scrollTop = Number(q.get('scroll')); }, 900);
+  </script>
+</body>
+</html>
