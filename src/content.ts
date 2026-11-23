@@ -72,7 +72,7 @@ export const EVIDENCE: EvidenceCard[] = [
   { id: 'e-ice-arctic', topic: 'Ice', title: 'Arctic September sea-ice extent, 1979 to now', text: 'The yearly minimum extent from passive microwave sensors, with a trend line.', rel: { 'c-ice': 'core' } },
   { id: 'e-fireperim', topic: 'Forest', title: 'Fire perimeter drawn over the loss pixels', text: 'The burnt-area outline sits right on top of the NSW loss pixels from 2019–20.', rel: { 'c-forest': 'core' } },
   { id: 'e-rates', topic: 'Sea level', title: 'Rate of rise: early years against recent years', text: 'Trend lines fitted to 1993–2002 and 2015–2024 give two different rates in mm per year.', rel: { 'c-sea': 'core' } },
-  { id: 'e-survey', topic: 'Reef', title: 'AIMS aerial bleaching survey, 2024', text: 'Observers flew over reefs and scored how much coral was bleached, on a scale from 0 to 4.', rel: { 'c-reef': 'core' } },
+  { id: 'e-survey', topic: 'Reef', title: 'AIMS aerial bleaching survey, 2024', text: 'Observers flew over reefs and scored how much coral was bleached, on a scale from 0 (none) to 5 (extreme).', rel: { 'c-reef': 'core' } },
   { id: 'e-pair', topic: 'Sea level', title: 'Two hand-picked years that go the other way', text: 'Between one pair of years the global average fell. This card shows only that pair.', rel: {}, trap: true },
   { id: 'e-fireweather', topic: 'Forest', title: 'Fire-weather research on Black Summer', text: 'Studies found that climate change increased the risk of the extreme fire weather. They did not trace every fire to climate change.', rel: { 'c-forest': 'core' } },
   { id: 'e-ice-trend', topic: 'Ice', title: 'Arctic September trend: change per decade', text: 'A line fitted through every September since 1979, with the percent change per decade.', rel: { 'c-ice': 'core' } },
@@ -135,6 +135,7 @@ export const REEF_WHY: Option[] = [
 
 export const REEF_LIMITS: (Option & { valid: boolean })[] = [
   { id: 'risk', valid: true, text: 'DHW predicts risk, not outcome.' },
+  { id: 'scale', valid: true, text: 'Each “reef” is a NOAA regional station (a hot-end figure for a whole region), so it can differ from the heat stress measured at one reef.' },
   { id: 'depth', valid: true, text: 'Depth and shading differ between reefs.' },
   { id: 'history', valid: true, text: 'A reef’s earlier bleaching history changes how it copes.' },
   { id: 'oneyear', valid: true, text: 'One summer is not a trend.' },

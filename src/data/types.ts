@@ -41,6 +41,8 @@ export interface Reef {
   dhw: DhwPoint[];
   peakDhwBySummer: Record<string, number>;
   survey: Record<string, SurveyEntry>;
+  /** Range of reef-level DHW (deg C-weeks) that AIMS measured at the individually surveyed reefs in 2024. */
+  aimsReefDhwRange2024?: [number, number];
 }
 export interface SurveyScaleEntry {
   category: number;

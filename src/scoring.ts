@@ -225,12 +225,20 @@ export interface PartScore {
   items: { key: string; label: string; earned: number | null; max: number }[];
 }
 
+/** Stations the student completed. The sensor lab records each one under `sensorLab.stations[id].done`; `stationsDone` is the older flat list. Both count, once each. */
+export function sensorStationsDone(p: Progress): number {
+  const done = new Set<string>(p.sensorLab.stationsDone ?? []);
+  const stations = (p.sensorLab as unknown as { stations?: Record<string, { done?: boolean }> }).stations ?? {};
+  for (const [id, st] of Object.entries(stations)) if (st?.done) done.add(id);
+  return Math.min(SENSOR_MAX, done.size);
+}
+
 export function summarise(p: Progress): PartScore[] {
   const out: PartScore[] = [];
   for (const info of PARTS) {
     if (info.id === 'debrief') continue;
     if (info.id === 'sensor-lab') {
-      const earned = Math.min(SENSOR_MAX, new Set(p.sensorLab.stationsDone).size);
+      const earned = sensorStationsDone(p);
       out.push({ part: info.id, label: info.label, earned, max: SENSOR_MAX, items: [{ key: 'sensor.stations', label: 'Stations completed', earned, max: SENSOR_MAX }] });
       continue;
     }

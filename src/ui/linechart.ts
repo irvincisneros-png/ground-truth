@@ -18,7 +18,10 @@ export interface ChartHighlight {
 }
 export interface ChartRef {
   y: number;
+  /** Full name, shown in the legend. */
   label: string;
+  /** Short two-line tag drawn in the right margin, outside the plotted data: "Alert 1|4 °C-weeks". */
+  tag?: string;
 }
 export interface ChartTrend {
   seriesId: string;
@@ -45,6 +48,8 @@ export interface LineChartOpts {
   xTicks?: number[];
   highlights?: ChartHighlight[];
   refs?: ChartRef[];
+  /** Put the legend above the plot instead of below it. */
+  legendTop?: boolean;
   trends?: ChartTrend[];
   /** Multiplier applied to a fitted slope before display (10 turns "per year" into "per decade"). */
   slopeScale?: number;
@@ -83,7 +88,9 @@ export function createLineChart(initial: LineChartOpts): LineChart {
   const legend = h('ul', { class: 'legend' });
   const table = DataTableToggle(tableSpec);
   wrap.append(svgHost);
-  root.append(wrap, readout, live, h('div', { class: 'chart-tools' }, legend, table.el));
+  const tools = h('div', { class: 'chart-tools' }, table.el);
+  if (o.legendTop) root.append(legend, wrap, readout, live, tools);
+  else { tools.prepend(legend); root.append(wrap, readout, live, tools); }
 
   const xf = () => o.xFormat ?? ((x: number) => String(Math.round(x * 100) / 100));
   const yf = () => o.yFormat ?? ((y: number) => fmt(y, o.yDecimals ?? 1));
@@ -121,7 +128,8 @@ export function createLineChart(initial: LineChartOpts): LineChart {
   function render() {
     const W = Math.max(280, width);
     const H = Math.round(Math.min(400, Math.max(220, W * (o.aspect ?? 0.5))));
-    const pw = W - M.l - M.r, ph = H - M.t - M.b;
+    const mr = o.refs?.some((r) => r.tag) ? 78 : M.r;
+    const pw = W - M.l - mr, ph = H - M.t - M.b;
     const hasData = o.series.some((se) => se.points.length);
     wrap.setAttribute('aria-label', `${o.title}. Use the left and right arrow keys to move along the line and read values.`);
     clear(svgHost);
@@ -152,7 +160,13 @@ export function createLineChart(initial: LineChartOpts): LineChart {
     const ref = s('g', { class: 'ref' });
     for (const r of o.refs ?? []) {
       ref.append(s('line', { x1: M.l, x2: M.l + pw, y1: sy(r.y), y2: sy(r.y) }));
-      ref.append(s('text', { x: M.l + pw - 4, y: sy(r.y) - 4, 'text-anchor': 'end' }, r.label));
+      if (r.tag) {
+        // labels live in the right margin, outside the data, so a plotted line can never run through them
+        const [a, b] = r.tag.split('|');
+        const t = s('text', { x: M.l + pw + 6, y: sy(r.y) + (b ? -1 : 4) }, a);
+        if (b) t.append(s('tspan', { x: M.l + pw + 6, dy: 11 }, b));
+        ref.append(t);
+      } else ref.append(s('text', { x: M.l + pw - 4, y: sy(r.y) - 4, 'text-anchor': 'end', class: 'plate' }, r.label));
     }
     svg.append(ref);
 
@@ -248,6 +262,7 @@ export function createLineChart(initial: LineChartOpts): LineChart {
 
     legend.textContent = '';
     for (const se of o.series) legend.append(h('li', null, h('span', { class: `sw${se.dashed ? ' dash' : ''}`, style: `background:${se.color};color:${se.color}` }), se.label));
+    if (o.legendTop) for (const r of o.refs ?? []) legend.append(h('li', null, h('span', { class: 'sw dash', style: 'color:var(--d-ref)' }), r.label));
     results.forEach((r, i) => {
       const t = o.trends![i];
       legend.append(h('li', null, h('span', { class: 'sw dash', style: `color:${t.color ?? '#ffb547'}` }), `${r.label}: `, h('strong', { class: 'mono' }, r.slope === null ? 'no fit' : `${fmt(r.slope, o.slopeDecimals ?? 1)} ${o.slopeUnit ?? ''}`.trim())));

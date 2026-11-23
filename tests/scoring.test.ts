@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CLAIMS, EVIDENCE, LIMITATIONS, type ClaimId } from '../src/content';
 import {
   EVIDENCE_MAX, EVIDENCE_MIN, ITEMS, PEAK_TOLERANCE, RATIO_TOLERANCE, briefingMax, claimById, commitPoints, evidenceById, itemMax,
-  limitationMatch, relevanceOf, scoreBriefing, scoreLimitSelection, scorePrediction, scoreQuantified, strengthPoints, summarise, summaryText, totals, withinTolerance,
+  limitationMatch, relevanceOf, scoreBriefing, scoreLimitSelection, scorePrediction, scoreQuantified, sensorStationsDone, strengthPoints, summarise, summaryText, totals, withinTolerance,
 } from '../src/scoring';
 import { award, defaultState } from '../src/state';
 
@@ -216,6 +216,10 @@ describe('limitation selection (reef)', () => {
     expect(scoreLimitSelection(['risk', 'depth']).points).toBe(2);
     expect(scoreLimitSelection(['risk', 'depth', 'history', 'oneyear']).points).toBe(2);
   });
+  it('counts the regional-scale limitation as valid, still capped at the item maximum', () => {
+    expect(scoreLimitSelection(['scale']).points).toBe(1);
+    expect(scoreLimitSelection(['scale', 'risk', 'depth']).points).toBe(2);
+  });
   it('penalises invalid picks, never below zero', () => {
     expect(scoreLimitSelection(['risk', 'depth', 'cannot']).points).toBe(1);
     expect(scoreLimitSelection(['cannot', 'hottest', 'wrong']).points).toBe(0);
@@ -245,6 +249,15 @@ describe('totals and summary', () => {
     const s = defaultState();
     s.sensorLab.stationsDone = ['a', 'b', 'a', 'c', 'd', 'e'];
     expect(summarise(s).find((x) => x.part === 'sensor-lab')!.earned).toBe(4);
+  });
+  it('counts stations the sensor lab marks done under sensorLab.stations (the debrief used to show 0 of 4)', () => {
+    const s = defaultState();
+    (s.sensorLab as unknown as { stations: Record<string, { done: boolean }> }).stations = {
+      thermal: { done: true }, altimeter: { done: true }, optical: { done: false }, microwave: { done: false },
+    };
+    expect(summarise(s).find((x) => x.part === 'sensor-lab')!.earned).toBe(2);
+    s.sensorLab.stationsDone = ['thermal', 'optical'];
+    expect(sensorStationsDone(s)).toBe(3);
   });
   it('clamps stored scores to the item maximum', () => {
     const s = defaultState();

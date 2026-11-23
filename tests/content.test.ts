@@ -20,6 +20,11 @@ describe('question content', () => {
     expect(C.REEF_LIMITS.some((o) => o.valid)).toBe(true);
     expect(C.REEF_LIMITS.some((o) => !o.valid)).toBe(true);
   });
+  it('names the regional-versus-reef-scale caveat as a valid reef limitation', () => {
+    const scale = C.REEF_LIMITS.find((o) => o.id === 'scale');
+    expect(scale?.valid).toBe(true);
+    expect(scale?.text).toMatch(/regional/i);
+  });
   it('strengths run from none to proves in order', () => {
     expect(C.STRENGTHS.map((s) => s.value)).toEqual([0, 1, 2, 3]);
   });

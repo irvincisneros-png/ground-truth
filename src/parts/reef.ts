@@ -17,7 +17,7 @@ const REEF_HEX = ['#d55e00', '#56b4e9', '#009e73'];
 const STEPS = ['Predict', 'Survey flight', 'Reveal', 'Ground truth', 'Compare', 'Limits'];
 // cividis-like ramp for the 0-4 survey categories. Colour is redundant: the number and label are always shown.
 const CAT_COLOURS = ['#2b4a73', '#4f6580', '#78797a', '#a18f6c', '#cdb85a', '#f4e04d'];
-const LIMIT_ORDER = ['cannot', 'risk', 'oneyear', 'hottest', 'depth', 'wrong', 'history'];
+const LIMIT_ORDER = ['cannot', 'risk', 'scale', 'oneyear', 'hottest', 'depth', 'wrong', 'history'];
 const CONFIDENCE = [
   { id: '1', text: 'Guess', detail: 'I am not sure at all' },
   { id: '2', text: 'Fairly sure', detail: 'The graph points one way' },
@@ -45,7 +45,7 @@ function heatChart(reefs: Reef[]): LineChart {
     xLabel: 'Date', yLabel: 'Heat stress (DHW)', yUnit: '°C-weeks',
     xFormat: (x) => String(Math.round(x)), xTicks: yearTicks(Math.min(...reefs.flatMap((r) => r.dhw.map((p) => isoToYear(p.date)))), Math.max(...reefs.flatMap((r) => r.dhw.map((p) => isoToYear(p.date)))), 8),
     yDecimals: 1, zeroBase: true,
-    refs: [{ y: 4, label: 'Bleaching Alert Level 1 (4)' }, { y: 8, label: 'Alert Level 2 (8)' }],
+    refs: [{ y: 4, label: 'Bleaching Alert Level 1 (4 °C-weeks)', tag: 'Alert 1|4 °C-weeks' }, { y: 8, label: 'Alert Level 2 (8 °C-weeks)', tag: 'Alert 2|8 °C-weeks' }], legendTop: true,
     highlights: [{ x0: a, x1: b, label: `Summer ${SUMMER}` }],
     tableXHeader: 'Date (decimal year)', aspect: 0.42,
     tableCaption: 'Degree Heating Weeks (°C-weeks) for each reef',
@@ -159,6 +159,14 @@ function run(root: HTMLElement, ctx: PartCtx, data: ReefData, buoy: BuoyData): (
       h('ul', { class: 'muted small', style: 'list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.2rem 1rem' }, d.filter((x) => x.pct > 0).map((x) => h('li', null, `${x.text ?? (x.group !== undefined ? `Categories ${x.group}` : `Category ${x.category}`)}: `, h('strong', { class: 'mono' }, `${x.pct}%`)))),
       sv.basis ? h('p', { class: 'muted small', style: 'margin:0' }, `Basis: ${sv.basis}`) : null);
   }
+  /** The honest caveat: these are NOAA regional virtual stations, and AIMS measured lower heat stress at the reefs it surveyed. */
+  function scaleNote(): HTMLElement {
+    const ranges = reefs.filter((r) => r.aimsReefDhwRange2024).map((r) => `${r.name} ${fmt(r.aimsReefDhwRange2024![0], 2)}\u2013${fmt(r.aimsReefDhwRange2024![1], 2)}`).join('; ');
+    return h('div', { class: 'stack-sm' },
+      h('p', { style: 'margin:0' }, 'The three \u201Creefs\u201D on the graph are NOAA regional virtual stations. Each line is a hot-end figure for a whole region (the 90th-percentile pixel), not the heat stress at one reef.'),
+      ranges ? h('p', { style: 'margin:0' }, `At the reefs AIMS actually surveyed in ${SUMMER}, the heat stress it measured was lower than the regional line: ${ranges} \u00B0C-weeks. The Torres Strait region is the clearest case.`) : null,
+      h('p', { class: 'muted', style: 'margin:0' }, 'This is a teaching point, not a mistake: a regional satellite number and a single reef can tell different stories. Scale matters when you decide how far satellite data can be pushed.'));
+  }
   function stepReveal(): HTMLElement {
     const fl = reefs.find((r) => r.id === st.flightReef) ?? reefs[0];
     const sv = fl.survey[SUMMER];
@@ -172,7 +180,8 @@ function run(root: HTMLElement, ctx: PartCtx, data: ReefData, buoy: BuoyData): (
       return h('tr', null,
         h('th', { scope: 'row' }, h('span', { style: `display:inline-block;width:10px;height:10px;border-radius:50%;background:${REEF_COLOURS[i]};margin-right:.5rem` }), r.name),
         h('td', { class: 'mono' }, peak === undefined ? '\u2013' : `${fmt(peak, 1)} \u00B0C-weeks`),
-        h('td', { style: 'white-space:normal;text-align:left' }, sv2 ? h('span', null, h('strong', { class: 'mono' }, `Category ${catText(sv2)}`), ` \u00B7 ${sv2.label}`) : '\u2013'));
+        h('td', { style: 'white-space:normal;text-align:left' }, sv2 ? h('span', null, h('strong', { class: 'mono' }, `Category ${catText(sv2)}`), ` \u00B7 ${sv2.label}`) : '\u2013'),
+        h('td', { class: 'mono' }, r.aimsReefDhwRange2024 ? `${fmt(r.aimsReefDhwRange2024[0], 2)}\u2013${fmt(r.aimsReefDhwRange2024[1], 2)}` : '\u2013'));
     });
     const scale = h('ol', { style: 'list-style:none;padding:0;margin:0;display:grid;gap:.35rem' }, data.surveyScale.map((c) =>
       h('li', { style: 'display:flex;gap:.6rem;align-items:baseline' }, h('span', { class: 'mono', style: `min-width:1.6rem;text-align:center;border-radius:4px;padding:0 .3rem;background:${CAT_COLOURS[Math.min(5, c.category)]};color:${c.category >= 3 ? '#0b1424' : '#fff'}` }, String(c.category)), h('span', null, h('strong', null, c.label), ' \u2013 ', c.description))));
@@ -193,11 +202,12 @@ function run(root: HTMLElement, ctx: PartCtx, data: ReefData, buoy: BuoyData): (
         Card('All results', [
           h('div', { class: 'data-table-wrap', style: 'max-height:none' }, h('table', null,
             h('caption', null, 'Peak heat stress and aerial survey result by area'),
-            h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Area'), h('th', { scope: 'col' }, `Peak DHW ${SUMMER}`), h('th', { scope: 'col', style: 'text-align:left' }, 'Survey result'))),
+            h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Area'), h('th', { scope: 'col' }, `Peak DHW ${SUMMER}`), h('th', { scope: 'col', style: 'text-align:left' }, 'Survey result'), h('th', { scope: 'col' }, 'Measured at surveyed reefs (\u00B0C-weeks)'))),
             h('tbody', null, rows))),
           h('div', { style: 'height:.8rem' }),
           Callout(held ? 'Your prediction held up' : known ? 'The ground truth overturned your prediction' : 'Survey result unavailable', verdictBody, held ? 'good' : 'warn'),
         ]),
+        Card('Regional figures, not single reefs', [scaleNote()], { flat: true }),
         PartNav({ back: { label: 'Back', onClick: () => go(1) }, next: { label: 'Check against the ground', onClick: () => advance(3) } })),
       Card('Survey scale', [scale], { flat: true }));
   }
@@ -305,7 +315,7 @@ function run(root: HTMLElement, ctx: PartCtx, data: ReefData, buoy: BuoyData): (
           h('p', null, 'You compared heat stress with survey results. Pick every limitation that really applies. Careful: a wrong pick costs a point.'),
           ChoiceGroup({ name: 'limits', legend: 'Limitations on what we can conclude', options: opts, multiple: true, value: picked, locked: done, onChange: (v) => { picked = v as string[]; submit.disabled = !picked.length; } }),
           done ? null : h('div', { class: 'row', style: 'margin-top:1rem' }, submit),
-          done ? h('div', { class: 'fade-in', style: 'margin-top:1rem' }, Callout('Attribution limit', `Green ones are real limits on this evidence. DHW predicts risk, not outcome, and two reefs in one summer cannot make a trend. You scored ${score!.points} of ${itemMax('reef.limits')} here.`, 'good')) : null,
+          done ? h('div', { class: 'fade-in', style: 'margin-top:1rem' }, Callout('Attribution limit', `Green ones are real limits on this evidence. DHW predicts risk, not outcome; these were regional hot-end figures, not single reefs; and one summer cannot make a trend. You scored ${score!.points} of ${itemMax('reef.limits')} here.`, 'good')) : null,
         ], { eyebrow: 'Step 6 · attribution' }),
         PartNav({ back: { label: 'Back', onClick: () => go(4) }, next: { label: 'On to the transfer cases', disabled: !done, onClick: () => { ctx.finish('reef'); } } })),
       Card('The evidence you had', [chart.el], { flat: true }));
