@@ -1,12 +1,13 @@
 import { h, clear } from '../ui/dom';
-import { Callout, Card, StepList, Badge } from '../ui/components';
+import { Callout, Card, Readout, StepList } from '../ui/components';
 import { createMapPanel } from '../ui/mappanel';
 import { createLineChart } from '../ui/linechart';
 import { dataUrl } from '../data/load';
+import { lossSeries } from '../data/derive';
 import type { ForestCase, ForestData } from '../data/types';
 import { FOREST_CAUTION, FOREST_CLASSIFY, FOREST_GUESS } from '../content';
 import { itemMax } from '../scoring';
-import { fmt } from '../ui/chart-math';
+import { fmt, yearTicks } from '../ui/chart-math';
 import { PartHeader, PartNav, QuestionBlock, withData, type PartCtx, type PartMount } from './shared';
 
 const STEPS = ['Loss pixels', 'Overlays', 'The long record'];
@@ -26,12 +27,17 @@ function run(root: HTMLElement, ctx: PartCtx, data: ForestData): () => void {
   const advance = (to: number) => { st.step = Math.max(st.step, to); ctx.save(); view = to; render(); window.scrollTo({ top: 0 }); };
 
   function cropMap(c: ForestCase, overlays: boolean, title: string) {
+    const focus = (c.lossLegend ?? []).filter((l) => l.focus);
+    const legend = [
+      ...(focus.length ? focus.map((l) => ({ color: l.hex, label: String(l.year) })) : [{ color: '#f2a93b', label: `Loss ${c.lossYears[0]}\u2013${c.lossYears[1]}` }]),
+      ...((c.lossLegend ?? []).some((l) => !l.focus) ? [{ color: '#5f78be', label: 'Other years' }] : []),
+      ...(overlays ? [{ color: c.overlayKind === 'fire' ? '#ff6b57' : '#7cc4ff', label: c.overlayKind === 'fire' ? 'Fire perimeter' : 'Clearing polygon' }] : []),
+    ];
     const m = createMapPanel({
-      bbox: c.bounds, ariaLabel: `${title}: tree-cover loss pixels${overlays ? ' with overlay' : ''}`, scaleKm: undefined,
-      legend: [{ color: '#f2a93b', label: `Tree-cover loss ${c.lossYears[0]}–${c.lossYears[1]} (30 m pixels)` }, ...(overlays ? [{ color: c.overlayKind === 'fire' ? '#ff6b57' : '#7cc4ff', label: c.overlayKind === 'fire' ? 'Fire perimeter' : 'Clearing polygon' }] : [])],
+      bbox: c.bounds, ariaLabel: `${title}: tree-cover loss pixels${overlays ? ' with overlay' : ''}`, legend,
     });
     m.addImage(dataUrl(assetPath(c.lossPng)), c.bounds, { label: `Tree-cover loss pixels, ${title}` });
-    if (overlays) m.addOverlay(c.overlay, { stroke: c.overlayKind === 'fire' ? '#ff6b57' : '#7cc4ff', label: c.overlayKind === 'fire' ? 'Fire perimeter' : 'Clearing polygon' });
+    if (overlays) m.addOverlay(c.overlay, { stroke: c.overlayKind === 'fire' ? '#ff6b57' : '#7cc4ff', fill: c.overlayKind === 'fire' ? 'rgba(255,107,87,.10)' : 'rgba(124,196,255,.10)', label: c.overlayKind === 'fire' ? 'Fire perimeter' : 'Clearing polygon' });
     return m;
   }
 
@@ -70,8 +76,10 @@ function run(root: HTMLElement, ctx: PartCtx, data: ForestData): () => void {
           return h('div', { style: i ? 'margin-top:1.1rem' : '' }, QuestionBlock(ctx, {
             name: `forest-c-${c.id}`, legend: `Crop ${i === 0 ? 'A' : 'B'}: what is behind it?`, options: FOREST_CLASSIFY.map((o) => ({ ...o, correct: o.id === c.answer })),
             get: () => st.classify[c.id], set: (id) => { st.classify[c.id] = id; }, scoreKey: `forest.classify.${i}`, max: itemMax(`forest.classify.${i}`), rerender: render,
-            explain: right ? c.note : `The overlay shows ${c.overlayKind === 'fire' ? 'a fire perimeter' : 'a clearing polygon'}. ${c.note}`,
-          }));
+            explain: `${right ? '' : 'Look again. '}${c.overlayKind === 'fire' ? 'The fire perimeter sits right on the loss pixels, and the loss follows the fire edge in an irregular patchwork.' : 'The loss comes in straight-edged blocks that line up with mapped clearing polygons: people changing how the land is used.'}`,
+          }), st.classify[c.id] ? h('div', { class: 'stack-sm', style: 'margin-top:.7rem' },
+            c.stats?.focus_loss_inside_overlay_pct !== undefined ? Readout(`Loss pixels inside the ${c.overlayKind === 'fire' ? 'fire perimeter' : 'clearing polygons'}`, fmt(c.stats.focus_loss_inside_overlay_pct, 1), '%') : null,
+            h('details', null, h('summary', { style: 'cursor:pointer;color:var(--muted);font-size:.85rem' }, 'Data notes'), h('p', { class: 'muted small', style: 'margin:.4rem 0 0' }, `${c.label}. ${c.note}`))) : null);
         }), { eyebrow: 'Step 2 \u00B7 add the ground truth' }),
         PartNav({ back: { label: 'Back', onClick: () => go(0) } })),
       h('div', { class: 'stack' },
@@ -89,28 +97,27 @@ function run(root: HTMLElement, ctx: PartCtx, data: ForestData): () => void {
   }
 
   function stepLong(): HTMLElement {
-    const withSeries = cases.filter((c) => c.annualLoss_ha && c.annualLoss_ha.length > 1);
-    return h('div', { class: 'cols' },
-      h('div', { class: 'stack' },
+    const charts = cases.map((c, i) => {
+      const s = lossSeries(c.stats, 2001, undefined);
+      return s.length ? createLineChart({
+        title: `Crop ${i === 0 ? 'A' : 'B'}: share of the crop with tree-cover loss each year`, series: [{ id: c.id, label: c.label, color: i === 0 ? '#d55e00' : '#56b4e9', points: s.map((p) => ({ x: p.year, y: p.pct })), markers: true }],
+        xLabel: 'Year', yLabel: 'Area with loss', yUnit: '% of crop', xFormat: (x) => String(Math.round(x)), xTicks: yearTicks(s[0].year, s[s.length - 1].year, 6), yDecimals: 1, zeroBase: true, aspect: 0.62,
+        highlights: [{ x0: c.lossYears[0] - 0.5, x1: c.lossYears[1] + 0.5, label: 'map period' }], tableXHeader: 'Year',
+      }) : null;
+    });
+    return h('div', { class: 'stack' },
+      h('div', { class: 'cols' },
         Card('From one event to the long record', [
-          h('p', null, 'A loss map is a snapshot. To judge climate, you need to put that snapshot into a long record of the same place, and then into the science of why.'),
+          h('p', null, 'A loss map is a snapshot. To judge climate, put that snapshot into a long record of the same place, and then into the science of why.'),
           h('ul', { style: 'margin:.2rem 0 .8rem 1.1rem;padding:0' },
             h('li', null, h('strong', null, 'Tree-cover loss'), ' means canopy is gone from a pixel. It is not the same as deforestation.'),
             h('li', null, h('strong', null, 'Deforestation'), ' means land was permanently changed to another use, such as farms.'),
             h('li', null, h('strong', null, 'Climate'), ' is the pattern over decades. One burnt season is weather plus fuel plus ignition.')),
           Callout('Keep this in mind', 'Satellites are very good at where and how much. They need other evidence for why.'),
-        ], { eyebrow: 'Step 3 · the long view' }),
-        PartNav({ back: { label: 'Back', onClick: () => go(1) }, next: { label: 'On to sea ice', onClick: () => ctx.finish('forest') } })),
-      withSeries.length
-        ? Card('Annual tree-cover loss in each crop', withSeries.map((c) => {
-          const ch = createLineChart({
-            title: `Annual tree-cover loss: ${c.label}`, series: [{ id: c.id, label: c.label, color: '#e69f00', points: c.annualLoss_ha!.map((p) => ({ x: p.year, y: p.loss_ha })), markers: true }],
-            xLabel: 'Year', yLabel: 'Tree-cover loss', yUnit: 'ha', xFormat: (x) => String(Math.round(x)), yDecimals: 0, zeroBase: true, aspect: 0.45,
-            highlights: [{ x0: c.lossYears[0], x1: c.lossYears[1] + 1, label: 'map period' }],
-          });
-          return ch.el;
-        }), { flat: true })
-        : Card('What a long record would add', [h('p', { class: 'muted' }, 'Looking back over many years of the same crop would show whether the loss was a one-off spike or part of a steady pattern. That is why one event never settles a climate question.'), h('div', null, Badge('Case ends on the long record', 'accent'))], { flat: true }));
+        ], { eyebrow: 'Step 3 \u00B7 the long view' }),
+        Card('Every year since 2001', [h('div', { class: 'cols even', style: 'gap:.8rem' }, charts.map((ch) => (ch ? ch.el : h('p', { class: 'muted' }, 'No year-by-year record for this crop.')))),
+          h('p', { class: 'muted small', style: 'margin:.6rem 0 0' }, 'Each point is the share of the same map window that lost trees that year. The spike marks the map period. The other years show what ordinary loss in this place looks like.')], { flat: true })),
+      PartNav({ back: { label: 'Back', onClick: () => go(1) }, next: { label: 'On to sea ice', onClick: () => ctx.finish('forest') } }));
   }
 
   function render() {

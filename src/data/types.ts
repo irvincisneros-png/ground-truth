@@ -105,8 +105,16 @@ export interface ForestCase {
   overlayKind: 'fire' | 'clearing';
   answer: 'climate-linked' | 'land-use';
   note: string;
-  /** Optional extra: annual tree-cover loss for the crop, drawn as a chart if present. */
-  annualLoss_ha?: { year: number; loss_ha: number }[];
+  /** Colours the loss PNG uses, by year. Focus years are the ones the lesson is about. */
+  lossLegend?: { year: number; hex: string; focus: boolean }[];
+  stats?: {
+    focus_loss_pct?: number;
+    focus_loss_inside_overlay_pct?: number;
+    overlay_area_pct?: number;
+    pixel_m_approx?: number;
+    /** Share of the crop window that lost tree cover in each year (the long record). */
+    loss_by_year_pct_of_window?: Record<string, number>;
+  };
 }
 export interface ForestData extends WithSources {
   cases: ForestCase[];

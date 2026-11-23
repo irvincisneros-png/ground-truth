@@ -129,7 +129,7 @@ export function createMapPanel(o: MapPanelOpts): MapPanel {
       if (g0.type === 'FeatureCollection') for (const f of g0.features as GeoFeature[]) geoms.push(f.geometry);
       else if (g0.type === 'Feature') geoms.push(g0.geometry);
       else geoms.push(g0 as GeoGeometry);
-      for (const gg of geoms) g.append(s('path', { d: geometryToPath(gg, proj), fill: style.fill ?? 'none', stroke: style.stroke, 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'fill-rule': 'evenodd' }));
+      for (const gg of geoms) g.append(s('path', { d: geometryToPath(gg, proj), fill: style.fill ?? 'none', stroke: style.stroke, 'stroke-width': 2.5, 'vector-effect': 'non-scaling-stroke', 'stroke-linejoin': 'round', 'fill-rule': 'evenodd' }));
       overlayLayer.append(g);
       return g;
     },

@@ -3,7 +3,7 @@ import reef from './fixtures/reef.json';
 import buoy from './fixtures/buoy.json';
 import sea from './fixtures/sealevel.json';
 import ice from './fixtures/seaice.json';
-import { annualMeans, buoyStats, findDropPair, isoToYear, monthTicks, parseWindows, predictionHeld, rankByPeak, reefPeak, seaIceTrend, seriesRecords, summerWindow, surveyOutcome, windowRate, yearToDayLabel, yearToLabel } from '../src/data/derive';
+import { annualMeans, lossSeries, buoyStats, findDropPair, isoToYear, monthTicks, parseWindows, predictionHeld, rankByPeak, reefPeak, seaIceTrend, seriesRecords, summerWindow, surveyOutcome, windowRate, yearToDayLabel, yearToLabel } from '../src/data/derive';
 import { validate } from '../src/data/load';
 import type { BuoyData, ReefData, SeaIceData, SeaLevelData } from '../src/data/types';
 
@@ -167,5 +167,18 @@ describe('data validation', () => {
     expect(validate('sealevel', { gmsl: [] })).toBe(false);
     expect(validate('forest', { cases: [] })).toBe(false);
     expect(validate('seaice', { antarctic: {} })).toBe(false);
+  });
+});
+
+describe('forest loss series', () => {
+  it('fills years with no loss pixels with zero and keeps order', () => {
+    const s = lossSeries({ loss_by_year_pct_of_window: { '2001': 0.5, '2003': 2, '2005': 1 } }, 2001);
+    expect(s.map((p) => p.year)).toEqual([2001, 2002, 2003, 2004, 2005]);
+    expect(s.map((p) => p.pct)).toEqual([0.5, 0, 2, 0, 1]);
+  });
+  it('is empty without stats', () => {
+    expect(lossSeries(undefined)).toEqual([]);
+    expect(lossSeries({})).toEqual([]);
+    expect(lossSeries({ loss_by_year_pct_of_window: {} })).toEqual([]);
   });
 });

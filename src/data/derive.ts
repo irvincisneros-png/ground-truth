@@ -181,3 +181,15 @@ export function yearToDayLabel(x: number): string {
   const d = new Date(Math.round(t / 3600000) * 3600000);
   return `${d.getUTCDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()]}`;
 }
+
+/** Annual loss series for a forest crop, filling years with no loss pixels with zero. */
+export function lossSeries(stats: { loss_by_year_pct_of_window?: Record<string, number> } | undefined, from = 2001, to?: number): { year: number; pct: number }[] {
+  const m = stats?.loss_by_year_pct_of_window;
+  if (!m) return [];
+  const years = Object.keys(m).map(Number).filter(Number.isFinite);
+  if (!years.length) return [];
+  const end = to ?? Math.max(...years);
+  const out: { year: number; pct: number }[] = [];
+  for (let y = Math.min(from, ...years); y <= end; y++) out.push({ year: y, pct: m[String(y)] ?? 0 });
+  return out;
+}
