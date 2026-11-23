@@ -106,3 +106,26 @@ The Northern and Far Northern columns are context only (not in `reef.json`). The
 8. **2026 summer bleaching status not checked.**
 9. Buoy: the satellite-logger differences are small (mean +0.27 degC); the "why do they differ" prompt should be framed as depth, time of day and pixel size, not a large disagreement.
 10. `public/data/geo/au-land.json` was created by someone else and is not covered here.
+
+---
+## Satellite Spotter images (`public/spotter/*.webp`, `images.json`)
+
+Retrieved 2026-11-24. Scripts in `tools/spotter-images/` (`forest_s2_fc.py`, `reef_compose.py`, `finalize.py`); raw downloads in `data-raw/spotter/` (gitignored). All files are webp, quality 80, each at most 350 KB.
+
+**Ice: `ice-before.webp` (Sep 1984) / `ice-after.webp` (Sep 2024)**, 840 x 1000 px.
+- **Source:** NOAA/NSIDC Sea Ice Index v4 (G02135) monthly concentration maps: `https://noaadata.apps.nsidc.org/NOAA/G02135/north/monthly/images/09_Sep/N_198409_conc_v4.0.png` and `N_202409_conc_v4.0.png`. Original size 420 x 500, upscaled 2x (Lanczos) with no other change. The maps carry the NSIDC title, the 0 to 100 % legend and the 1981-2010 median ice edge (pink line).
+- **Why not NASA SVS:** svs.gsfc.nasa.gov (the first choice) did not respond from this network, and NASA Earth Observatory's World of Change series starts in 1990. The NSIDC pair has identical framing and projection and covers 1984 vs 2024.
+- **Licence:** same finding as section 5: **no explicit licence**; NSIDC says most data are government-funded and public domain, and the only condition is the citation (Fetterer et al. 2025, doi:10.7265/a98x-0f50). The sea-ice map frames are monthly means, not a single-day minimum. The image text says "Total Area" while the product's headline numbers elsewhere in this file use extent; the map is of concentration.
+- **Sensors:** 1984 is from SMMR/SSM/I-era passive microwave, 2024 from SSMIS (AMSR2 from 2025).
+
+**Forest: `forest-before.webp` (22 Oct 2019) / `forest-after.webp` (20 Mar 2020)**, 1200 x 810 px.
+- **Source:** Copernicus Sentinel-2A L2A, tile 56HKJ, items `S2A_56HKJ_20191022_0_L2A` and `S2A_56HKJ_20200320_0_L2A`, read from the public AWS bucket via the Element 84 Earth Search STAC (`https://earth-search.aws.element84.com/v1`; collection `sentinel-2-l2a`, DOI 10.5270/S2_-742ikth). Cloud cover 0.1 % and 0.0004 %.
+- **Processing (mine, not NASA/ESA):** window lon 150.05 to 150.60, lat -33.285 to -32.979 (Wollemi National Park / Capertee Valley edge near Lithgow, NSW; inside the 2019-20 Gospers Mountain fire area). False colour R = band 12 (SWIR 2.2 um), G = band 11 (SWIR 1.6 um), B = band 4 (red), same fixed reflectance stretch (gamma 0.8) for both dates, resampled to 1200 px by area averaging. Burnt ground shows brown to red-brown; healthy forest is dark green. The bright green paddocks at the top left of the "after" image are pasture that greened after rain, not forest.
+- **Licence:** Copernicus Sentinel Data Legal Notice (free, full and open, attribution required). Credit: "Contains modified Copernicus Sentinel data 2019 and 2020".
+- **Not checked:** I did not overlay the NPWS fire perimeter on this exact window (section 4 does for the nearby Gospers window), so "burnt" is shown by the image itself, not by an independent fire-boundary check. The SVS/NASA Earth Observatory 2019-20 image pairs searched for did not exist as before/after pairs for NSW.
+
+**Reef: `reef-before.webp` (15 Mar 2023) / `reef-after.webp` (15 Mar 2024)**, 1200 x 1334 px.
+- **Source:** NOAA Coral Reef Watch CoralTemp v3.1 Daily 5 km Degree Heating Weeks, archived at NOAA NCEI: plain map `https://www.ncei.noaa.gov/data/oceans/crw/5km/v3.1/image_plain/daily/dhw/png/{2023,2024}/ct5km_dhw_v3.1_{20230315,20240315}.png` (7200 x 3600) and annotated map `.../image_browse/daily/dhw/png/{year}/ct5km_dhw_v3.1_global_{date}.png`.
+- **Processing:** the plain map cropped to lon 139.5 to 159.5, lat -8 to -28 (Cape York to Fraser Island and the Coral Sea), upscaled 3x nearest-neighbour so the real 5 km pixels stay visible. NOAA's own title strip and colour legend are cropped from the annotated map of the same date and stacked above and below. Nothing was redrawn. Grey is land. There are no coastline lines or place names on the NOAA plain map.
+- **Calm year choice:** 15 Mar 2021 was checked and rejected (high DHW across much of the Coral Sea); March 2023 is mostly 0 to 3 degC-weeks over the reef, with a few higher patches near Papua New Guinea (top) and the far south-east corner.
+- **Licence:** NOAA is a US Government work, public domain. **The CRW pages checked state no licence or credit line**, so this is my reading; the CRW "How to cite" page was not fetched. Credit given as NOAA Coral Reef Watch.

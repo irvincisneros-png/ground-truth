@@ -1,0 +1,53 @@
+[
+  {
+    "id": "ice",
+    "before": {
+      "file": "spotter/ice-before.webp",
+      "label": "1984",
+      "date": "1984-09 (September monthly average)"
+    },
+    "after": {
+      "file": "spotter/ice-after.webp",
+      "label": "2024",
+      "date": "2024-09 (September monthly average)"
+    },
+    "caption": "White is sea ice in September, when the ice is smallest. There is much less ice now than in 1984.",
+    "credit": "NOAA/NSIDC Sea Ice Index, version 4 (Fetterer et al., 2025), National Snow and Ice Data Center, University of Colorado Boulder. Doi:10.7265/a98x-0f50",
+    "licence": "No formal licence stated; NSIDC says most of its data are government-funded and in the public domain. Free to use with the required NSIDC citation.",
+    "sourceUrl": "https://nsidc.org/data/g02135/versions/4"
+  },
+  {
+    "id": "forest",
+    "before": {
+      "file": "spotter/forest-before.webp",
+      "label": "Oct 2019",
+      "date": "2019-10-22"
+    },
+    "after": {
+      "file": "spotter/forest-after.webp",
+      "label": "Mar 2020",
+      "date": "2020-03-20"
+    },
+    "caption": "The same forest near Lithgow, NSW, before and after the fires. Green is healthy forest. Burnt ground shows brown.",
+    "credit": "Contains modified Copernicus Sentinel data 2019 and 2020 (Sentinel-2A, processed by the Ground Truth project: false colour, shortwave infrared)",
+    "licence": "Copernicus Sentinel data: free, full and open access (Sentinel Data Legal Notice); attribution required.",
+    "sourceUrl": "https://doi.org/10.5270/S2_-742ikth"
+  },
+  {
+    "id": "reef",
+    "before": {
+      "file": "spotter/reef-before.webp",
+      "label": "Mar 2023",
+      "date": "2023-03-15"
+    },
+    "after": {
+      "file": "spotter/reef-after.webp",
+      "label": "Mar 2024",
+      "date": "2024-03-15"
+    },
+    "caption": "Heat stress on the Great Barrier Reef. Purple is a little heat stress. Red and brown mean a lot, so coral bleaches.",
+    "credit": "NOAA Coral Reef Watch, Daily 5km Degree Heating Weeks (v3.1); data archived at NOAA NCEI. Cropped to Queensland and the Coral Sea; legend is NOAA's own.",
+    "licence": "US Government work (NOAA), public domain; no separate licence text is stated on the CRW pages.",
+    "sourceUrl": "https://coralreefwatch.noaa.gov/product/5km/index_5km_dhw.php"
+  }
+]
