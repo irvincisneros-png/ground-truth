@@ -8,7 +8,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: here('./index.html'),
+        index: here('./index.html'),
+        challenge: here('./challenge.html'),
         teacher: here('./teacher.html'),
       },
     },
