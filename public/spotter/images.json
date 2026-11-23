@@ -11,7 +11,7 @@
       "label": "2024",
       "date": "2024-09 (September monthly average)"
     },
-    "caption": "White is sea ice in September, when the ice is smallest. There is much less ice now than in 1984.",
+    "caption": "White is sea ice in September, when the ice is smallest.",
     "credit": "NOAA/NSIDC Sea Ice Index, version 4 (Fetterer et al., 2025), National Snow and Ice Data Center, University of Colorado Boulder. Doi:10.7265/a98x-0f50",
     "licence": "No formal licence stated; NSIDC says most of its data are government-funded and in the public domain. Free to use with the required NSIDC citation.",
     "sourceUrl": "https://nsidc.org/data/g02135/versions/4"
@@ -45,7 +45,7 @@
       "label": "Mar 2024",
       "date": "2024-03-15"
     },
-    "caption": "Heat stress on the Great Barrier Reef. Purple is a little heat stress. Red and brown mean a lot, so coral bleaches.",
+    "caption": "Heat stress on the Great Barrier Reef. Purple means a little heat. Red, brown and pink mean a lot.",
     "credit": "NOAA Coral Reef Watch, Daily 5km Degree Heating Weeks (v3.1); data archived at NOAA NCEI. Cropped to Queensland and the Coral Sea; legend is NOAA's own.",
     "licence": "US Government work (NOAA), public domain; no separate licence text is stated on the CRW pages.",
     "sourceUrl": "https://coralreefwatch.noaa.gov/product/5km/index_5km_dhw.php"
