@@ -1,5 +1,5 @@
 // Full student playthrough (no ?unlock), headless Chrome over CDP.  usage: node tools/qa/playthrough.mjs [tag] [width]
-import { launch, BASE, sleep } from './cdp.mjs';
+import { launch, BASE, CH, sleep } from './cdp.mjs';
 const tag = process.argv[2] || 'pt';
 const W = Number(process.argv[3] || 1366), Hh = W < 600 ? 812 : 768;
 const c = await launch();
@@ -31,7 +31,7 @@ async function step(name, fn) {
 
 try {
   await c.viewport(W, Hh, W < 600);
-  await c.goto(BASE); await c.ev('localStorage.clear()'); await c.goto(BASE); await sleep(800);
+  await c.goto(CH); await c.ev('localStorage.clear()'); await c.goto(CH); await sleep(800);
 
   await step('launch', async () => {
     await shot('01-launch-fresh');
@@ -214,18 +214,18 @@ try {
   });
 
   await step('resume after reload', async () => {
-    await c.goto(BASE); await sleep(1500);
+    await c.goto(CH); await sleep(1500);
     const t = await text('main'); const h = await part();
     console.log('  after reload hash', h, '| welcome:', /welcome back/i.test(t));
     if (!/welcome back/i.test(t)) note('no welcome back note after reload');
     await shot('42-resume');
   });
   await step('draft', async () => {
-    await c.goto(`${BASE}?draft#/debrief`); await sleep(1500); await shot('43-debrief-draft', true);
+    await c.goto(`${CH}?draft#/debrief`); await sleep(1500); await shot('43-debrief-draft', true);
     const t = await text('main'); console.log('  draft badge:', /draft/i.test(t));
   });
   await step('start again', async () => {
-    await c.goto(BASE); await sleep(1200);
+    await c.goto(CH); await sleep(1200);
     await btn('Start again', { nth: 0 }); await sleep(400); await shot('44-start-again-modal');
     await btn('Clear and start again'); await sleep(800);
     const ls = await c.ev('localStorage.getItem("ground-truth:v1")');

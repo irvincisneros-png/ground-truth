@@ -3,7 +3,8 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const BASE = 'http://localhost:8800/ground-truth/';
+export const BASE = `http://localhost:${process.env.GT_PORT || 8800}/ground-truth/`;
+export const CH = BASE + 'challenge.html';
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = 9333;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -19,10 +20,11 @@ export async function launch() {
   const page = targets.find((t) => t.type === 'page');
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((r) => (ws.onopen = r));
-  let id = 0; const pending = new Map(); const logs = [];
+  let id = 0; const pending = new Map(); const logs = []; const handlers = new Map();
   ws.onmessage = (m) => {
     const d = JSON.parse(m.data);
     if (d.id && pending.has(d.id)) { const { res, rej } = pending.get(d.id); pending.delete(d.id); d.error ? rej(new Error(JSON.stringify(d.error))) : res(d.result); }
+    else if (d.method && handlers.has(d.method)) handlers.get(d.method)(d.params);
     else if (d.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(d.params.type)) logs.push(`[${d.params.type}] ` + d.params.args.map((a) => a.value ?? a.description).join(' '));
     else if (d.method === 'Runtime.exceptionThrown') logs.push('[exception] ' + (d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text));
     else if (d.method === 'Log.entryAdded' && d.params.entry.level === 'error') logs.push('[log] ' + d.params.entry.text + ' ' + (d.params.entry.url || ''));
@@ -31,6 +33,7 @@ export async function launch() {
   await send('Page.enable'); await send('Runtime.enable'); await send('Log.enable');
   const api = {
     proc, send, logs,
+    on(method, fn) { handlers.set(method, fn); },
     async viewport(w, h, mobile = false) { await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile }); },
     async goto(url) { await send('Page.navigate', { url }); await sleep(900); },
     async ev(expr) {

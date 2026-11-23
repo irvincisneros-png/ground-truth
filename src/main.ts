@@ -46,10 +46,11 @@ function brandMark() {
 }
 
 const header = h('header', { class: 'app-header' },
-  h('a', { class: 'brand', href: import.meta.env.BASE_URL, 'aria-label': 'Ground Truth home' }, brandMark(), h('span', null, 'Ground Truth', h('small', null, 'NSW SCIENCE Y9 · 4.3.4'))),
+  h('a', { class: 'brand', href: `${import.meta.env.BASE_URL}challenge.html`, 'aria-label': 'Ground Truth Challenge home' }, brandMark(), h('span', null, 'Ground Truth', h('small', null, 'NSW SCIENCE Y9 · 4.3.4'))),
   h('div', { class: 'header-actions' },
     saveState,
     Button('Credits', { variant: 'ghost', small: true, onClick: showCredits }),
+    h('a', { class: 'btn ghost small', href: `${import.meta.env.BASE_URL}` }, 'Easier mode: Satellite Spotter'),
     h('a', { class: 'btn ghost small', href: `${import.meta.env.BASE_URL}teacher.html` }, 'Teacher guide'),
     Button('Start again', { variant: 'ghost', small: true, onClick: confirmRestart })));
 
