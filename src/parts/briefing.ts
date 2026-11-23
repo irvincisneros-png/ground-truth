@@ -73,6 +73,11 @@ export const mountBriefing: PartMount = (root, ctx) => {
       ctx.save();
       practice = null;
       render();
+      // the marked result sits at the top of the part: bring it into view and announce it
+      window.scrollTo({ top: 0 });
+      resultBox.setAttribute('role', 'status');
+      resultBox.tabIndex = -1;
+      resultBox.focus({ preventScroll: true });
       return;
     }
     practice = r;

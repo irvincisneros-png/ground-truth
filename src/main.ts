@@ -1,7 +1,7 @@
 import './styles/tokens.css';
 import './styles/base.css';
 import { h, s, clear } from './ui/dom';
-import { Button, Callout, openModal } from './ui/components';
+import { Button, openModal } from './ui/components';
 import { PARTS, clearProgress, defaultState, hasSavedProgress, isUnlocked, loadProgress, markComplete, saveProgress, safeStorage, type PartId, type Progress } from './state';
 import { loadAllSources } from './data/load';
 import { nextPart, type PartCtx, type PartMount } from './parts/shared';
@@ -143,6 +143,8 @@ if (PARTS.some((p) => p.id === wanted) && isUnlocked(state, wanted, unlockAll)) 
 render(false);
 if (hadSaved && state.part !== 'launch') {
   const info = PARTS.find((p) => p.id === state.part)!;
-  main.prepend(h('div', { style: 'margin-bottom:1rem' }, Callout('Welcome back', `Your progress was saved. You are back at “${info.label}”.`, 'good')));
+  const note = h('div', { class: 'resume-note', role: 'status' }, h('strong', null, 'Welcome back'), h('span', null, `Your progress was saved. You are back at “${info.label}”.`),
+    Button('Dismiss', { variant: 'ghost', small: true, onClick: () => note.remove() }));
+  main.prepend(note);
 }
 if (storage) save(); else saveState.textContent = 'Not saved: storage is blocked';

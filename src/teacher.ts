@@ -4,7 +4,7 @@ import { h, clear } from './ui/dom';
 import { loadMany, loadLand } from './data/load';
 import { buoyStats, parseWindows, findDropPair, annualMeans, reefList, reefPeak, seaIceTrend, seriesRecords, surveyOutcome, windowRate } from './data/derive';
 import { CLAIMS, EVIDENCE, FOREST_CAUTION, ICE_SHEET, ICE_STATEMENT, LAUNCH_GUESS, LIMITATIONS, REEF_LIMITS, REEF_WHY, SEA_CONCLUSION, SEA_GAUGE, STRENGTHS, type Option } from './content';
-import { briefingMax } from './scoring';
+import { PEAK_TOLERANCE, RATIO_TOLERANCE, briefingMax } from './scoring';
 import { fmt } from './ui/chart-math';
 import type { DataFiles, Source } from './data/types';
 
@@ -12,7 +12,7 @@ const root = document.getElementById('teacher-root')!;
 const base = import.meta.env.BASE_URL;
 
 const sec = (title: string, ...body: (Node | string | null)[]) => h('section', { class: 'panel' }, h('h2', { style: 'font-size:1.25rem' }, title), ...body);
-const tbl = (head: string[], rows: (Node | string)[][]) => h('div', { style: 'overflow-x:auto' }, h('table', { class: 't' }, h('thead', null, h('tr', null, head.map((c) => h('th', null, c)))), h('tbody', null, rows.map((r) => h('tr', null, r.map((c) => h('td', null, c)))))));
+const tbl = (head: string[], rows: (Node | string)[][]) => h('div', { class: 't-scroll' }, h('table', { class: head.length > 2 ? 't wide' : 't' }, h('thead', null, h('tr', null, head.map((c) => h('th', null, c)))), h('tbody', null, rows.map((r) => h('tr', null, r.map((c) => h('td', null, c)))))));
 const right = (opts: Option[]) => opts.find((o) => o.correct)?.text ?? '';
 const pending = (what: string) => h('span', { class: 'muted' }, `[${what}: data file not available yet]`);
 
@@ -74,8 +74,9 @@ function build(d: Partial<DataFiles>, hasLand: boolean) {
       h('h3', null, 'Reef investigation'), reefAnswers,
       out ? h('p', null, `Most severe in the survey: ${out.top === 'same' ? 'the top reefs tied' : reefs.find((r) => r.id === out.top)?.name ?? 'unknown'}. A student whose prediction is overturned still scores the commitment points.`) : null,
       buoy && d.buoy ? h('p', null, `Logger at ${d.buoy.depth_m} m against satellite skin SST: mean difference ${fmt(buoy.meanDiff, 2)} °C (satellite minus logger), largest gap ${fmt(buoy.maxAbsDiff, 2)} °C. Accept: skin against depth, and a pixel against a point.`) : pending('buoy data'),
+      reefs.some((r) => r.aimsReefDhwRange2024) ? h('p', null, h('strong', null, 'Regional versus reef scale (say this out loud). '), `The three “reefs” are NOAA regional virtual stations: each DHW line is a hot-end figure (90th-percentile pixel) for a whole region. At the reefs AIMS actually surveyed in 2024 the measured heat stress was lower: ${reefs.filter((r) => r.aimsReefDhwRange2024).map((r) => `${r.name} ${fmt(r.aimsReefDhwRange2024![0], 2)}–${fmt(r.aimsReefDhwRange2024![1], 2)}`).join('; ')} °C-weeks. AIMS found reef-level bleaching largely consistent with reef-level DHW. The students see this in the reveal and as a valid limitation ("Each reef is a NOAA regional station"). It is a teaching point, not a failure of DHW.`) : null,
       h('p', null, `Why do they differ (correct): ${right(REEF_WHY)}`),
-      h('p', null, 'Quantified comparison tolerance: peak within ±0.5 °C-weeks or 10%; ratio within ±0.2 or 15% (whichever is larger).'),
+      h('p', null, `Quantified comparison tolerance (whichever is larger): peak within ±${PEAK_TOLERANCE.abs} °C-weeks or ${Math.round(PEAK_TOLERANCE.rel * 100)}%; ratio within ±${RATIO_TOLERANCE.abs} or ${Math.round(RATIO_TOLERANCE.rel * 100)}%.`),
       h('p', null, 'Valid limitations: ', REEF_LIMITS.filter((o) => o.valid).map((o) => o.text).join(' '), ' Invalid (each costs a point): ', REEF_LIMITS.filter((o) => !o.valid).map((o) => o.text).join(' ')),
       h('h3', null, 'Sea level'),
       d.sealevel ? h('p', null, `From the data: ${e[0]}–${e[1]} ≈ ${fmt(windowRate(d.sealevel.gmsl, e[0], e[1]) ?? NaN, 1)} mm/yr; ${l[0]}–${l[1]} ≈ ${fmt(windowRate(d.sealevel.gmsl, l[0], l[1]) ?? NaN, 1)} mm/yr (least-squares over every point in the window).${trap ? ` The trap pair is ${trap.y0} to ${trap.y1}, a change of ${fmt(trap.delta_mm, 1)} mm in annual means.` : ''} Tide gauge: ${d.sealevel.tideGauge.station}.`) : pending('sea level data'),

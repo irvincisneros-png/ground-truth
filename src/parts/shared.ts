@@ -17,11 +17,12 @@ export interface PartCtx {
 }
 export type PartMount = (root: HTMLElement, ctx: PartCtx) => void | (() => void);
 
+/** Compact part header: one eyebrow line, a modest title and a one-line intro, so the interactive part starts high on the page. */
 export function PartHeader(eyebrow: string, title: string, lede?: string): HTMLElement {
-  return h('header', { style: 'margin-bottom:1rem' },
+  return h('header', { class: 'part-head' },
     h('p', { class: 'eyebrow' }, h('span', { class: 'dot' }), eyebrow),
-    h('h1', { style: 'font-size:clamp(1.6rem,1.1rem + 1.8vw,2.3rem)' }, title),
-    lede ? h('p', { class: 'muted', style: 'max-width:46rem;margin:0' }, lede) : null);
+    h('h1', null, title),
+    lede ? h('p', { class: 'lede muted' }, lede) : null);
 }
 
 export function nextPart(id: PartId): PartId | null {
