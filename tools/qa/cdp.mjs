@@ -6,12 +6,13 @@ import { dirname } from 'node:path';
 export const BASE = `http://localhost:${process.env.GT_PORT || 8800}/ground-truth/`;
 export const CH = BASE + 'challenge.html';
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const PORT = 9333;
+const PORT = Number(process.env.GT_CDP_PORT || 9333);
+const PROFILE = process.env.GT_CDP_PROFILE || '/tmp/gt-qa-profile';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export { sleep };
 
 export async function launch() {
-  const proc = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, '--use-angle=metal', '--enable-unsafe-swiftshader', '--no-first-run', '--user-data-dir=/tmp/gt-qa-profile', 'about:blank'], { stdio: 'ignore' });
+  const proc = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, '--use-angle=metal', '--enable-unsafe-swiftshader', '--no-first-run', `--user-data-dir=${PROFILE}`, 'about:blank'], { stdio: 'ignore' });
   let targets;
   for (let i = 0; i < 50; i++) {
     try { targets = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json(); if (targets.length) break; } catch {}
