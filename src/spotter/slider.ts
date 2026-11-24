@@ -45,17 +45,19 @@ export function beforeAfter(pair: ImagePair | undefined, what: string, onMove: (
   });
   const handle = h('div', { class: 'sp-ba-handle', 'aria-hidden': 'true' }, h('span', { class: 'sp-ba-grip' }, '‹ ›'));
   stage.append(after, h('div', { class: 'sp-ba-before' }, before), handle, range);
+  // Date chips sit ON the picture corners so the labels stay with the image at any size.
   const labels = h('div', { class: 'sp-ba-labels', 'aria-hidden': 'true' },
-    h('span', null, `Before${pair.before.label ? `: ${pair.before.label}` : ''}`),
-    h('span', null, `After${pair.after.label ? `: ${pair.after.label}` : ''}`));
-  const frame = h('div', { class: 'sp-ba-frame' }, labels, stage);
+    h('span', { class: 'sp-ba-chip' }, pair.before.label || 'Before'),
+    h('span', { class: 'sp-ba-chip' }, pair.after.label || 'After'));
+  stage.append(labels);
+  const frame = h('div', { class: 'sp-ba-frame' }, stage);
   const update = () => {
     const v = Number(range.value);
     stage.style.setProperty('--pos', String(v));
     range.setAttribute('aria-valuetext', `${Math.round(v)} percent before, ${Math.round(100 - v)} percent after`);
     onMove(v);
   };
-  after.addEventListener('load', () => { if (after.naturalWidth && after.naturalHeight) wrap.style.setProperty('--ar-n', String(after.naturalWidth / after.naturalHeight)); });
+  after.addEventListener('load', () => { if (after.naturalWidth && after.naturalHeight) { const ar = after.naturalWidth / after.naturalHeight; wrap.style.setProperty('--ar-n', String(ar)); wrap.dataset.orient = ar < 1.15 ? 'portrait' : 'landscape'; } });
   range.addEventListener('input', update);
   const broken = () => { wrap.replaceChildren(imageComing(what)); };
   before.addEventListener('error', broken);
