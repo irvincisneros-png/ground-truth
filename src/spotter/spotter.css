@@ -82,6 +82,8 @@ body.spotter::before{background:radial-gradient(120% 90% at 50% 0%,rgba(30,56,10
 .sp-orbit-card span span{display:block;font-size:1.05rem;color:#c3d0ee;line-height:1.35}
 .sp-orbit-card .sp-ic{--ic:#7cc4ff;color:var(--sp-ink)}
 .sp-orbit{min-height:60vh}
+.sp-orbit-full{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex}
+.sp-orbit-full>.sp-orbit{flex:1;min-height:0;height:100dvh;display:flex;flex-direction:column}
 
 /* ---------- step 1 ---------- */
 .sp-fig{margin:0;display:grid;gap:.4rem;justify-items:center}

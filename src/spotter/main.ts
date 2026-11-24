@@ -170,9 +170,10 @@ function comingSoon(onExit: () => void): HTMLElement {
 async function openOrbitRun() {
   runCleanups();
   atStart = false;
+  // The game fills the whole window: no Spotter header or footer while flying.
   const host = h('div', { class: 'sp-orbit' });
   clear(app);
-  app.append(topBar(), h('main', { class: 'sp-main', id: 'sp-main' }, host), footer());
+  app.append(h('main', { class: 'sp-orbit-full', id: 'sp-main', tabindex: '-1' }, host));
   const exit = () => { atStart = true; render(); };
   const load = Object.values(orbitLoaders)[0];
   const mod = load ? await load().catch(() => null) : null;
