@@ -1,4 +1,5 @@
 // Orbit Run visual audit: stages fixed scenes (zone, cloud, night, junk) and screenshots each one.
+// GT_REDUCED=1 emulates prefers-reduced-motion.
 // Usage: GT_PORT=8805 GT_CDP_PORT=9477 GT_CDP_PROFILE=/path node tools/qa/orbit-run-scenes.mjs outdir [only-prefix]
 import { launch, BASE, sleep } from './cdp.mjs';
 
@@ -19,6 +20,7 @@ const scene = (o) => O(`(()=>{const g=o.game;const S=${JSON.stringify(o)};
 const shot = async (name, sc, wait = 700) => { if (!want(name)) return; await scene(sc); await sleep(wait); await c.shot(`${OUT}/${name}.png`); };
 const out = {};
 try {
+  if (process.env.GT_REDUCED) await c.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   await c.viewport(1366, 768);
   await c.goto(URL); await sleep(1800);
   await c.ev(`localStorage.removeItem('ground-truth:orbit-run:v1')`); await c.goto(URL); await sleep(1600);
