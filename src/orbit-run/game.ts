@@ -14,11 +14,23 @@ export const BAND = 290;            // altitude band height in world units
 export const SAT_R = 11;            // satellite hit radius (sprite is much larger: forgiving)
 export const JUNK_HIT = 0.72;       // junk hit radius = drawn radius * this
 export const MAX_SHIELDS = 3;
-export const EDGE_COST = 0.25;      // shield lost per edge touch (top or bottom)
+export const EDGE_COST = 0.25;      // shield lost per edge touch (top or bottom), at full difficulty
 export const EDGE_CD = 0.9;         // seconds between edge costs while pinned on an edge
 export const POWER_GAIN = 0.1;      // power per second while collecting
-export const POWER_DRAIN = 0.16;    // power per second with the wrong eye (when the right eye would work)
-export const ZONE_GRACE = 0.6;      // seconds after a zone starts before a wrong eye drains power
+export const POWER_DRAIN = 0.18;    // power per second with the wrong eye (when the right eye would work), at full difficulty
+export const ZONE_GRACE = 0.6;      // seconds after a zone starts before a wrong eye drains power, at full difficulty
+export const RAMP_ORBITS = 5;       // difficulty climbs from 0 to 1 over this many orbits (about 2.5 minutes)
+export const BOOST_TIME = 8;        // seconds of double points from a data boost
+export const PICKUP_R = 24;         // generous pick-up radius for power-ups
+/**
+ * Difficulty 0 (gentle start) to 1 (full). Orbit 1 is a warm-up: slow, single junk, soft penalties.
+ * Everything that gets harder reads from this one curve.
+ */
+export const difficultyAt = (dist: number) => Math.min(1, Math.max(0, dist / (ORBIT_LEN * RAMP_ORBITS)));
+const lerpD = (a: number, b: number, d: number) => a + (b - a) * d;
+export const drainAt = (d: number) => lerpD(0.07, POWER_DRAIN, d);
+export const graceAt = (d: number) => lerpD(1.4, ZONE_GRACE, d);
+export const edgeCostAt = (d: number) => lerpD(0.18, EDGE_COST, d);
 export const GEN_AHEAD = 1700;
 export const COLLECT_RATE = 4.5;    // data points per second when matched
 export const COMBO_GRACE = 1.3;     // seconds without collecting before the combo resets
@@ -31,6 +43,8 @@ export interface Segment { id: number; zone: ZoneId; x0: number; x1: number; hin
 export interface Junk { id: number; x: number; a: number; r: number; vy: number; kind: number; rot: number; spin: number; hitT: number; wall?: boolean }
 export interface Cloud { id: number; x0: number; x1: number; hinted: boolean; seed: number }
 export interface Hint { text: string; t: number; dur: number; id: number }
+export type PowerKind = 'repair' | 'solar' | 'boost';
+export interface PowerUp { id: number; x: number; a: number; kind: PowerKind; got: number }
 
 export type GameEvent =
   | { type: 'collect'; kind: DataKind; mult: number; combo: number }
@@ -38,6 +52,7 @@ export type GameEvent =
   | { type: 'hit'; junkId: number }
   | { type: 'edge'; top: boolean }
   | { type: 'drain' }
+  | { type: 'power'; kind: PowerKind }
   | { type: 'orbit'; orbit: number }
   | { type: 'switch'; sensor: SensorId }
   | { type: 'hint' }
@@ -57,6 +72,10 @@ export interface GameState {
   shields: number;
   power: number;
   draining: boolean;
+  boost: number;
+  powerUps: PowerUp[];
+  nextPowerX: number;
+  pickups: number;
   endReason: EndReason;
   edgeHinted: boolean;
   invuln: number;
@@ -136,7 +155,7 @@ export function cloudAt(s: GameState, x: number): Cloud | null {
 export function createGame(seed = 1, easy = false): GameState {
   const s: GameState = {
     rng: seed | 0, easy, t: 0, dist: 0, speed: BASE_SPEED, orbit: 1, a: 0.5, v: 0, climb: false,
-    sensor: 'heat', shields: MAX_SHIELDS, power: 1, draining: false, endReason: null, edgeHinted: false, invuln: 0, edgeCd: 0, combo: 0, mult: 1, comboGap: 0, collectAcc: 0, score: 0,
+    sensor: 'heat', shields: MAX_SHIELDS, power: 1, draining: false, boost: 0, powerUps: [], nextPowerX: 2600, pickups: 0, endReason: null, edgeHinted: false, invuln: 0, edgeCd: 0, combo: 0, mult: 1, comboGap: 0, collectAcc: 0, score: 0,
     data: { temperature: 0, forest: 0, sea: 0, ice: 0 }, junkHits: 0,
     segments: [], junk: [], clouds: [], nextZoneX: -900, nextJunkX: 1500, nextCloudX: 2300, lastJunkA: 0.5, lastGapA: 0.5, nextId: 1,
     nightOrbitHinted: -1, cloudHintCount: 0, nightHintCount: 0, hint: null, status: 'wrong', events: [], over: false,
@@ -171,55 +190,76 @@ function ensureContent(s: GameState): void {
     s.nextCloudX += len + range(s, 800, 1500);
   }
   while (s.nextJunkX < horizon) spawnJunk(s);
+  while (s.nextPowerX < horizon - 200) spawnPower(s);
 }
-function addJunk(s: GameState, x: number, a: number, wall = false): void {
+function addJunk(s: GameState, x: number, a: number, wall = false, drift = 0.12): void {
   const r = wall ? range(s, 18, 23) : range(s, 17, 27);
-  s.junk.push({ id: s.nextId++, x, a, r, vy: wall ? 0 : (rnd(s) - 0.5) * 0.12, kind: Math.floor(rnd(s) * 4), rot: rnd(s) * 6.28, spin: (rnd(s) - 0.5) * 2.2, hitT: 0, wall });
+  s.junk.push({ id: s.nextId++, x, a, r, vy: wall ? 0 : (rnd(s) - 0.5) * drift, kind: Math.floor(rnd(s) * 4), rot: rnd(s) * 6.28, spin: (rnd(s) - 0.5) * 2.2, hitT: 0, wall });
 }
-/** Gap width (in band fractions, between junk centres) for a wall in this orbit: wide at first, tighter later. */
-export const wallGap = (orbitIdx: number) => Math.max(0.36, 0.46 - 0.025 * orbitIdx);
+/** Gap width (in band fractions, between junk centres) for a wall: very wide at first, tighter later. */
+export const wallGap = (d: number) => lerpD(0.56, 0.34, d);
 /**
  * A wall of junk across the whole band, top to bottom, with one gap. The gap jumps away from the last
  * one, so the player has to move, and hugging the top or bottom edge is never safe.
  */
-function addWall(s: GameState, x: number, orbitIdx: number): void {
-  const gap = wallGap(orbitIdx);
+function addWall(s: GameState, x: number, d: number): void {
+  const gap = wallGap(d);
   const lo = 0.08 + gap / 2, hi = 0.92 - gap / 2;
   let gc = lo + rnd(s) * (hi - lo);
-  if (Math.abs(gc - s.lastGapA) < 0.25) gc = s.lastGapA > 0.5 ? lo + rnd(s) * 0.15 : hi - rnd(s) * 0.15;
+  const jump = lerpD(0.15, 0.3, d); // early gaps sit close to the last one; later they jump further
+  if (Math.abs(gc - s.lastGapA) < jump && d > 0.3) gc = s.lastGapA > 0.5 ? lo + rnd(s) * 0.15 : hi - rnd(s) * 0.15;
+  if (d <= 0.3) gc = s.lastGapA + Math.max(-0.25, Math.min(0.25, gc - s.lastGapA));
   gc = Math.min(hi, Math.max(lo, gc));
   const step = 0.15;
   for (let a = gc + gap / 2; a <= 1.02; a += step) addJunk(s, x, Math.min(0.97, a), true);
   for (let a = gc - gap / 2; a >= -0.02; a -= step) addJunk(s, x, Math.max(0.03, a), true);
   s.lastGapA = gc; s.lastJunkA = gc;
 }
+/**
+ * Junk patterns by difficulty:
+ * - warm-up (first half orbit): singles only, far apart, slow drift, never hugging an edge;
+ * - from about d 0.1: walls with a very wide gap; from d 0.2: pairs; edge-huggers and faster drift grow with d.
+ */
 function spawnJunk(s: GameState): void {
-  const orbitIdx = Math.floor(s.nextJunkX / ORBIT_LEN);
   const x = s.nextJunkX;
+  const d = difficultyAt(x);
   const roll = rnd(s);
-  const wallChance = orbitIdx === 0 ? 0.4 : 0.55;
+  const wallChance = d < 0.1 ? 0 : lerpD(0.25, 0.55, d);
+  const pairChance = d < 0.2 ? 0 : lerpD(0.1, 0.22, d);
+  const drift = lerpD(0.06, 0.2, d);
   let gapTime: number;
-  if (x > 2200 && roll < wallChance) {
-    addWall(s, x, orbitIdx);
-    gapTime = Math.max(1.9, 2.6 - 0.12 * Math.min(orbitIdx, 5)) + rnd(s) * 0.6;
-  } else if (orbitIdx >= 1 && roll < wallChance + 0.2) {
+  if (roll < wallChance) {
+    addWall(s, x, d);
+    gapTime = lerpD(3.2, 1.8, d) + rnd(s) * 0.6;
+  } else if (roll < wallChance + pairChance) {
     // A pair with a clear gap: always passable.
-    const gap = 0.46 + rnd(s) * 0.1;
+    const gap = lerpD(0.56, 0.44, d) + rnd(s) * 0.08;
     const low = 0.03 + rnd(s) * (0.94 - gap - 0.03);
-    addJunk(s, x, low);
-    addJunk(s, x + 36, low + gap);
+    addJunk(s, x, low, false, drift);
+    addJunk(s, x + 36, low + gap, false, drift);
     s.lastJunkA = low + gap / 2;
-    gapTime = Math.max(1.3, 1.9 - 0.1 * Math.min(orbitIdx, 5)) + rnd(s) * 0.7;
+    gapTime = lerpD(2.4, 1.3, d) + rnd(s) * 0.7;
   } else {
-    // Singles reach right to the edges, so the top and bottom are not hiding places.
-    let a = 0.04 + rnd(s) * 0.92;
-    if (Math.abs(a - s.lastJunkA) < 0.2) a = 0.04 + rnd(s) * 0.92;
-    if (rnd(s) < 0.3) a = rnd(s) < 0.5 ? 0.04 + rnd(s) * 0.08 : 0.88 + rnd(s) * 0.08;
-    addJunk(s, x, a);
+    // Singles. Later on, some sit right by an edge so the top and bottom are not hiding places.
+    let a = 0.1 + rnd(s) * 0.8;
+    if (Math.abs(a - s.lastJunkA) < 0.2) a = 0.1 + rnd(s) * 0.8;
+    if (rnd(s) < lerpD(0.1, 0.32, d)) a = rnd(s) < 0.5 ? 0.04 + rnd(s) * 0.08 : 0.88 + rnd(s) * 0.08;
+    addJunk(s, x, a, false, drift);
     s.lastJunkA = a;
-    gapTime = Math.max(1.1, 1.6 - 0.1 * Math.min(orbitIdx, 5)) + rnd(s) * 0.8;
+    gapTime = lerpD(2.6, 1.1, d) + rnd(s) * 0.8;
   }
   s.nextJunkX += gapTime * speedAt(x);
+}
+/** Power-ups every 9 to 14 s, placed between obstacles, in the middle of the band where they are easy to reach. */
+function spawnPower(s: GameState): void {
+  const x = s.nextPowerX;
+  const kinds: PowerKind[] = ['solar', 'repair', 'boost'];
+  const kind = kinds[Math.floor(rnd(s) * kinds.length)];
+  // Keep clear of junk columns at nearly the same x.
+  const clash = s.junk.some((j) => Math.abs(j.x - x) < 120);
+  const px = clash ? x + 160 : x;
+  s.powerUps.push({ id: s.nextId++, x: px, a: 0.25 + rnd(s) * 0.5, kind, got: 0 });
+  s.nextPowerX = px + range(s, 9, 14) * speedAt(px);
 }
 
 /* ---------- Status ---------- */
@@ -304,7 +344,7 @@ export function step(s: GameState, dt: number, climb: boolean): void {
       s.a = top ? 1 : 0;
       // Any touch of the top or bottom costs a little shield, so sitting on an edge is never safe.
       if (s.edgeCd === 0 && s.t > 3) {
-        s.shields = Math.max(0, s.shields - EDGE_COST);
+        s.shields = Math.max(0, s.shields - edgeCostAt(difficultyAt(s.dist)));
         s.edgeCd = EDGE_CD;
         s.events.push({ type: 'edge', top });
         if (!s.edgeHinted) { s.edgeHinted = true; showHint(s, top ? EDGE_HINT_TOP : EDGE_HINT_BOTTOM, 3); }
@@ -343,6 +383,21 @@ export function step(s: GameState, dt: number, climb: boolean): void {
     }
   }
 
+  // Power-ups: fly into them
+  s.boost = Math.max(0, s.boost - dt);
+  for (const p of s.powerUps) {
+    if (p.got > 0) { p.got += dt; continue; }
+    const dx = p.x - s.dist, dy = (p.a - s.a) * BAND;
+    if (dx * dx + dy * dy < (SAT_R + PICKUP_R) ** 2) {
+      p.got = 0.001; s.pickups++;
+      if (p.kind === 'repair') s.shields = Math.min(MAX_SHIELDS, Math.floor(s.shields + 1e-6) + 1);
+      else if (p.kind === 'solar') s.power = 1;
+      else s.boost = BOOST_TIME;
+      s.events.push({ type: 'power', kind: p.kind });
+    }
+  }
+  s.powerUps = s.powerUps.filter((p) => p.x > s.dist - 300 && p.got < 0.8);
+
   // Sensor, hints, collecting
   const seg = segmentAt(s, s.dist);
   const cloud = cloudAt(s, s.dist);
@@ -368,9 +423,10 @@ export function step(s: GameState, dt: number, climb: boolean): void {
   const avoidable = status === 'wrong' && sensorStatus(rightEye, seg.zone, !!cloud, night) === 'ok';
   const inZone = (s.dist - seg.x0) / Math.max(1, s.speed);
   const wasDraining = s.draining;
-  s.draining = avoidable && inZone > ZONE_GRACE && s.t > 1.5;
+  const dNow = difficultyAt(s.dist);
+  s.draining = avoidable && inZone > graceAt(dNow) && s.t > 1.5;
   if (s.draining) {
-    s.power = Math.max(0, s.power - POWER_DRAIN * dt);
+    s.power = Math.max(0, s.power - drainAt(dNow) * dt);
     if (!wasDraining) s.events.push({ type: 'drain' });
     s.combo = 0; s.mult = 1; s.comboGap = 0;
   } else if (status === 'ok') s.power = Math.min(1, s.power + POWER_GAIN * dt);
@@ -385,7 +441,7 @@ export function step(s: GameState, dt: number, climb: boolean): void {
       s.combo++;
       const m = multFor(s.combo);
       if (m > s.mult) { s.mult = m; s.events.push({ type: 'combo', mult: m }); }
-      s.score += s.mult;
+      s.score += s.mult * (s.boost > 0 ? 2 : 1);
       s.events.push({ type: 'collect', kind, mult: s.mult, combo: s.combo });
     }
   } else {
@@ -399,9 +455,10 @@ export function step(s: GameState, dt: number, climb: boolean): void {
 }
 
 /* ---------- Report + save ---------- */
-export interface Save { v: 1; best: number; bestEasy: number; runs: number; sound: boolean; easy: boolean }
+/** soundV 2: sound defaults to on (music added). Older saves stored sound: false only because that was the default. */
+export interface Save { v: 1; best: number; bestEasy: number; runs: number; sound: boolean; easy: boolean; soundV?: number }
 export type StoreLike = Pick<Storage, 'getItem' | 'setItem'>;
-export const defaultSave = (): Save => ({ v: 1, best: 0, bestEasy: 0, runs: 0, sound: false, easy: false });
+export const defaultSave = (): Save => ({ v: 1, best: 0, bestEasy: 0, runs: 0, sound: true, easy: false, soundV: 2 });
 
 export function loadSave(store: StoreLike | null | undefined): Save {
   try {
@@ -409,7 +466,7 @@ export function loadSave(store: StoreLike | null | undefined): Save {
     if (!raw) return defaultSave();
     const o = JSON.parse(raw) as Partial<Save>;
     const n = (x: unknown) => (typeof x === 'number' && isFinite(x) && x >= 0 ? Math.floor(x) : 0);
-    return { v: 1, best: n(o.best), bestEasy: n(o.bestEasy), runs: n(o.runs), sound: o.sound === true, easy: o.easy === true };
+    return { v: 1, best: n(o.best), bestEasy: n(o.bestEasy), runs: n(o.runs), sound: o.soundV === 2 ? o.sound === true : true, easy: o.easy === true, soundV: 2 };
   } catch { return defaultSave(); }
 }
 export function writeSave(store: StoreLike | null | undefined, save: Save): void {

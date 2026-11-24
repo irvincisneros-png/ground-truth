@@ -2,7 +2,7 @@
 import './orbit-run.css';
 import { DATA_LABEL, DATA_ORDER, DATA_SENSOR, FACTS, SENSORS, SENSOR_ORDER, ZONES } from './content';
 import type { SensorId } from './content';
-import { DT, createGame, loadSave, recordRun, segmentAt, setSensor, step, writeSave, ORBIT_LEN } from './game';
+import { DT, difficultyAt, createGame, loadSave, recordRun, segmentAt, setSensor, step, writeSave, ORBIT_LEN } from './game';
 import type { GameState } from './game';
 import { attachInput } from './input';
 import { createSfx } from './audio';
@@ -136,6 +136,7 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
     phase = p;
     root.dataset.phase = p;
     pauseBtn.hidden = p !== 'playing';
+    if (p === 'playing' && !attract) sfx.musicOn(); else sfx.musicOff();
   }
 
   function pick(id: SensorId) {
@@ -226,20 +227,24 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
         if (attract) attractAi();
         step(game, DT, climbing);
         acc -= DT;
+        const live = phase === 'playing' && !attract;
+        if (live && game.draining) sfx.drain();
         if (game.events.length) {
           fxEvents(fx, game, view, game.events);
-          for (const e of game.events) {
+          if (live) for (const e of game.events) {
             if (e.type === 'collect') sfx.collect(e.combo);
             else if (e.type === 'hit') sfx.hit();
             else if (e.type === 'edge') sfx.edge();
             else if (e.type === 'hint') sfx.hint();
             else if (e.type === 'orbit') sfx.orbit();
+            else if (e.type === 'power') sfx.power();
             else if (e.type === 'over' && phase === 'playing') { sfx.over(); overTimer = 1.0; }
           }
           game.events.length = 0;
         }
         if (attract && game.over) newAttract();
       }
+      sfx.setIntensity(difficultyAt(game.dist));
       if (game.over && phase === 'playing') { setPhase('over'); }
     }
     if (phase === 'over' && stepping) {

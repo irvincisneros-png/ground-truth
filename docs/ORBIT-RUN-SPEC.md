@@ -61,3 +61,16 @@
   - speed ramp;
   - easy mode auto-altitude avoiding junk;
   - save of the best score.
+
+## Difficulty curve, power-ups and music (added 2026-11-24 after the owner's playtest)
+- **One difficulty curve:** `difficultyAt(dist)` climbs from 0 to 1 over 5 orbits (about 2.5 minutes). Everything harder reads from it.
+  - **Wrong-eye drain:** 0.07/s → 0.18/s. **Switch grace:** 1.4 s → 0.6 s. **Edge cost:** 0.18 → 0.25 shield.
+  - **Junk:** the first half orbit has single junk only, far apart, slow drift, rarely by an edge. Walls start around d 0.1 with a very wide gap (0.56 of the band, narrowing to 0.34) that stays near the last gap early on and jumps further later. Pairs start at d 0.2. Spacing, drift and edge-huggers all grow with d. Speed still ramps per orbit.
+  - Simulated: a bot that never dodges lasts about 45 s; a bot that camps on the top edge lasts about 17 s.
+- **Power-ups** (fly into them; every 9–14 s, mid band, kept clear of junk columns; labelled in plain words):
+  - **Shield** (blue): +1 shield, up to 3.
+  - **Power** (gold solar panel): fills the power bar.
+  - **x2 points** (pink): double points for 8 s, with a badge and timer under the score.
+- **Sound** is now ON by default (save field `soundV: 2`; older saves that stored the old "off" default are treated as on). One toggle controls everything.
+  - **Music:** a generative Web Audio loop in A minor (Am–F–C–G), no files. 100 BPM at the start, up to 126 BPM. Layers join as difficulty rises: pad and bass, then arpeggio on every eighth, then hi-hats (d > 0.25), then kick and busier bass (d > 0.5). Plays only while flying; fades on pause and game over.
+  - **New effects:** a rising chime on power-up pick-up, and a low double buzz (at most every 0.7 s) while the wrong eye drains power. The attract demo behind the start card is silent.

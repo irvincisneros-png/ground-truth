@@ -1,8 +1,8 @@
 /** Orbit Run renderer: Canvas 2D, layered parallax. All art is authored in code (see textures.ts and sprites.ts). */
 import { SENSORS, ZONES } from './content';
 import type { SensorId, ZoneId } from './content';
-import { BAND, COMBO_GRACE, MAX_SHIELDS, ORBIT_LEN, cloudAt, nightFactorAt } from './game';
-import type { GameEvent, GameState, Junk } from './game';
+import { BAND, BOOST_TIME, COMBO_GRACE, MAX_SHIELDS, ORBIT_LEN, cloudAt, nightFactorAt } from './game';
+import type { GameEvent, GameState, Junk, PowerKind, PowerUp } from './game';
 import { CLOUD_LEN, CLOUD_UP, EDGE_W, GROUND_PAD, TILE, ZONE_FLAT, getTextures, runTextureJobs } from './textures';
 import type { TexSet } from './textures';
 import { JUNK_R, SAT_LENS_Y, SAT_NOZZLE, SKY_TILE, drawGlow, drawSprite, eyeImage, glow, makeJunk, makeMoon, makeSatellite, makeStars, preloadIcons } from './sprites';
@@ -21,11 +21,11 @@ interface Orb { t: number; dur: number; x0: number; y0: number; color: string; w
 export interface Fx {
   time: number; particles: Particle[]; orbs: Orb[]; shake: number; flash: number; hitFlash: number; quality: Quality; reduced: boolean;
   satPulse: number; switchPulse: number; comboPop: number; comboPopText: string; banner: number; bannerText: string; thrustAcc: number; shieldRing: number;
-  lowShieldFlash: number; scorePop: number; badT: number; ring: number;
+  lowShieldFlash: number; scorePop: number; badT: number; ring: number; toast: number; toastText: string; toastColor: string;
 }
 export function createFx(reduced: boolean): Fx {
   preloadIcons();
-  return { time: 0, particles: [], orbs: [], shake: 0, flash: 0, hitFlash: 0, quality: 3, reduced, satPulse: 0, switchPulse: 0, comboPop: 0, comboPopText: '', banner: 0, bannerText: '', thrustAcc: 0, shieldRing: 0, lowShieldFlash: 0, scorePop: 0, badT: 0, ring: 0 };
+  return { time: 0, particles: [], orbs: [], shake: 0, flash: 0, hitFlash: 0, quality: 3, reduced, satPulse: 0, switchPulse: 0, comboPop: 0, comboPopText: '', banner: 0, bannerText: '', thrustAcc: 0, shieldRing: 0, lowShieldFlash: 0, scorePop: 0, badT: 0, ring: 0, toast: 0, toastText: '', toastColor: '#fff' };
 }
 
 export function computeView(w: number, h: number, dpr: number): View {
@@ -119,6 +119,14 @@ export function fxEvents(fx: Fx, s: GameState, v: View, events: GameEvent[]) {
       }
     } else if (e.type === 'switch') {
       fx.switchPulse = 1; fx.badT = 0;
+    } else if (e.type === 'power') {
+      const P = POWER_LOOK[e.kind];
+      fx.toast = 1; fx.toastText = P.toast; fx.toastColor = P.color; fx.satPulse = 1; fx.ring = 1;
+      const n = fx.quality === 1 ? 6 : 18;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * 6.28;
+        addParticle(fx, { x: v.satX, y: satY, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, life: 0.6, max: 0.6, size: 2.6, color: P.color, kind: 'spark', rot: 0, vr: 0, world: false });
+      }
     } else if (e.type === 'orbit') {
       fx.banner = 1; fx.bannerText = `Orbit ${e.orbit + 1}`;
     }
@@ -136,6 +144,7 @@ export function fxUpdate(fx: Fx, s: GameState, v: View, dt: number, climbing: bo
   fx.shieldRing = Math.max(0, fx.shieldRing - dt * 1.8);
   fx.scorePop = Math.max(0, fx.scorePop - dt * 5);
   fx.ring = Math.max(0, fx.ring - dt * 3.2);
+  fx.toast = Math.max(0, fx.toast - dt * 0.65);
   fx.badT = s.status === 'ok' || s.over ? 0 : fx.badT + dt;
   const [lx, ly] = lensPos(s, v);
   for (const o of fx.orbs) {
@@ -614,6 +623,69 @@ function drawJunkWarnings(c: C2, s: GameState, v: View, fx: Fx) {
   }
 }
 
+/* ---------- power-ups ---------- */
+const POWER_LOOK: Record<PowerKind, { color: string; label: string; toast: string }> = {
+  repair: { color: '#6fc3ff', label: 'Shield', toast: '+1 shield' },
+  solar: { color: '#ffd24a', label: 'Power', toast: 'Power full' },
+  boost: { color: '#ff7bd5', label: 'x2 points', toast: 'Double points!' },
+};
+function powerIcon(c: C2, kind: PowerKind, r: number) {
+  c.lineJoin = 'round'; c.lineCap = 'round';
+  if (kind === 'repair') {
+    const w = r * 1.15, h = r * 1.35;
+    c.save(); c.translate(-w / 2, -h / 2); shieldPath(c, w, h); c.restore();
+    const g = c.createLinearGradient(0, -h / 2, 0, h / 2); g.addColorStop(0, '#d6efff'); g.addColorStop(1, '#3f8fdc');
+    c.fillStyle = g; c.fill(); c.strokeStyle = '#ffffff'; c.lineWidth = 1.6; c.stroke();
+    c.strokeStyle = '#ffffff'; c.lineWidth = r * 0.22; c.beginPath(); c.moveTo(0, -r * 0.34); c.lineTo(0, r * 0.38); c.moveTo(-r * 0.36, 0.02 * r); c.lineTo(r * 0.36, 0.02 * r); c.stroke();
+  } else if (kind === 'solar') {
+    // a small solar panel with a sun above it
+    c.save(); c.rotate(-0.25);
+    const pw = r * 1.3, ph = r * 0.8, x0 = -pw / 2, y0 = -ph / 2 + r * 0.22;
+    const g = c.createLinearGradient(x0, y0, x0 + pw, y0 + ph); g.addColorStop(0, '#3e6fd8'); g.addColorStop(1, '#1c3270');
+    c.fillStyle = g; rr(c, x0, y0, pw, ph, 2); c.fill(); c.strokeStyle = '#e8f0ff'; c.lineWidth = 1.3; c.stroke();
+    c.strokeStyle = 'rgba(220,235,255,.7)'; c.lineWidth = 0.8; c.beginPath();
+    for (let k = 1; k < 4; k++) { c.moveTo(x0 + (pw * k) / 4, y0); c.lineTo(x0 + (pw * k) / 4, y0 + ph); }
+    c.moveTo(x0, y0 + ph / 2); c.lineTo(x0 + pw, y0 + ph / 2); c.stroke(); c.restore();
+    c.fillStyle = '#ffd24a'; c.beginPath(); c.arc(r * 0.42, -r * 0.5, r * 0.26, 0, 6.283); c.fill();
+    c.strokeStyle = '#ffd24a'; c.lineWidth = 1.3; c.beginPath();
+    for (let k = 0; k < 8; k++) { const a = (k / 8) * 6.283; c.moveTo(r * 0.42 + Math.cos(a) * r * 0.36, -r * 0.5 + Math.sin(a) * r * 0.36); c.lineTo(r * 0.42 + Math.cos(a) * r * 0.5, -r * 0.5 + Math.sin(a) * r * 0.5); }
+    c.stroke();
+  } else {
+    c.beginPath(); for (let k = 0; k < 6; k++) { const a = (k / 6) * 6.283 + Math.PI / 6; c.lineTo(Math.cos(a) * r * 0.78, Math.sin(a) * r * 0.78); } c.closePath();
+    const g = c.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#ffc2ec'); g.addColorStop(1, '#c2399a');
+    c.fillStyle = g; c.fill(); c.strokeStyle = '#ffffff'; c.lineWidth = 1.5; c.stroke();
+    c.fillStyle = '#ffffff'; c.font = `900 ${r * 0.82}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('x2', 0, r * 0.05);
+    c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+  }
+}
+function drawPowerUps(c: C2, s: GameState, v: View, fx: Fx) {
+  for (const p of s.powerUps as PowerUp[]) {
+    const x = v.satX + (p.x - s.dist);
+    if (x < -60 || x > v.vw + 60) continue;
+    const P = POWER_LOOK[p.kind];
+    const bob = fx.reduced ? 0 : Math.sin(fx.time * 3 + p.id) * 4;
+    const y = yOf(v, p.a) + bob, r = 17;
+    if (p.got > 0) { // grabbed: burst outwards and fade
+      const k = clamp01(p.got / 0.5);
+      c.globalAlpha = 1 - k; c.strokeStyle = P.color; c.lineWidth = 3 * (1 - k);
+      c.beginPath(); c.arc(x, y, r + k * 40, 0, 6.283); c.stroke(); c.globalAlpha = 1;
+      continue;
+    }
+    const pulse = fx.reduced ? 0.5 : 0.5 + 0.5 * Math.sin(fx.time * 5 + p.id);
+    drawGlow(c, glow(P.color), x, y, r * (2.3 + pulse * 0.4));
+    c.fillStyle = 'rgba(8,16,34,.72)'; c.beginPath(); c.arc(x, y, r + 3, 0, 6.283); c.fill();
+    c.strokeStyle = P.color; c.lineWidth = 2; c.beginPath(); c.arc(x, y, r + 3, 0, 6.283); c.stroke();
+    if (!fx.reduced) { c.save(); c.globalAlpha = 0.7; c.setLineDash([5, 7]); c.lineDashOffset = -fx.time * 18; c.beginPath(); c.arc(x, y, r + 9, 0, 6.283); c.stroke(); c.restore(); }
+    c.save(); c.translate(x, y); powerIcon(c, p.kind, r * 0.95); c.restore();
+    // plain label under it
+    const fs = Math.max(11, 11 / v.scale);
+    c.font = `800 ${fs}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'top';
+    c.fillStyle = 'rgba(6,12,26,.75)'; const tw = c.measureText(P.label).width + 12; rr(c, x - tw / 2, y + r + 12, tw, fs + 6, (fs + 6) / 2); c.fill();
+    c.fillStyle = P.color; c.fillText(P.label, x, y + r + 15);
+    c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+  }
+}
+
 /** Red danger strips at the top and bottom of the flying band. They glow brighter as the satellite gets close. */
 function drawEdges(c: C2, s: GameState, v: View, fx: Fx) {
   const top = yOf(v, 1) - 14, bot = yOf(v, 0) + 14;
@@ -662,6 +734,15 @@ function drawHud(c: C2, s: GameState, v: View, fx: Fx, best: number) {
   c.fillStyle = 'rgba(160,190,240,.35)'; rr(c, bx, by, bw, 2.5, 1.25); c.fill();
   c.fillStyle = '#39478f'; c.fillRect(bx + bw * 0.58, by, bw * 0.24, 2.5);
   c.fillStyle = '#ffffff'; c.beginPath(); c.arc(bx + bw * prog, by + 1.25, 3, 0, 6.283); c.fill();
+  // data boost: badge and timer under the score panel
+  if (s.boost > 0) {
+    const bx2 = pad, by3 = pad + ph + 6, bw2 = narrow ? 96 : 118, bh2 = narrow ? 24 : 28;
+    c.fillStyle = 'rgba(70,14,56,.85)'; rr(c, bx2, by3, bw2, bh2, bh2 / 2); c.fill();
+    c.strokeStyle = '#ff7bd5'; c.lineWidth = 1.5; c.stroke();
+    c.fillStyle = '#ff7bd5'; rr(c, bx2 + 3, by3 + bh2 - 6, (bw2 - 6) * (s.boost / BOOST_TIME), 3, 1.5); c.fill();
+    c.fillStyle = '#ffffff'; c.font = font(narrow ? 12 : 13.5, 800); c.textAlign = 'center';
+    c.fillText('x2 points', bx2 + bw2 / 2, by3 + (narrow ? 15 : 17)); c.textAlign = 'left';
+  }
   // shields
   const sx0 = pad + pw + 10, sy0 = pad + 4;
   for (let i = 0; i < MAX_SHIELDS; i++) {
@@ -743,6 +824,13 @@ function drawHud(c: C2, s: GameState, v: View, fx: Fx, best: number) {
     c.shadowBlur = 0; c.shadowColor = 'transparent';
     c.globalAlpha = 1; c.textAlign = 'left';
   }
+  if (fx.toast > 0) {
+    const a = Math.min(1, fx.toast * 3);
+    c.globalAlpha = a; c.textAlign = 'center'; c.font = font(narrow ? 22 : 30, 900);
+    c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 12; c.fillStyle = fx.toastColor;
+    c.fillText(fx.toastText, cx, v.h * 0.3 - (1 - fx.toast) * 24);
+    c.shadowBlur = 0; c.shadowColor = 'transparent'; c.globalAlpha = 1; c.textAlign = 'left';
+  }
   if (fx.hitFlash > 0) {
     const g = c.createRadialGradient(v.w / 2, v.h / 2, Math.min(v.w, v.h) * 0.3, v.w / 2, v.h / 2, Math.max(v.w, v.h) * 0.75);
     g.addColorStop(0, 'rgba(229,99,107,0)'); g.addColorStop(1, `rgba(229,99,107,${0.5 * fx.hitFlash})`);
@@ -769,6 +857,7 @@ export function render(c: C2, s: GameState, v: View, fx: Fx, climbing: boolean, 
   if (hud) drawZoneFlags(c, s, v);
   drawEdges(c, s, v, fx);
   drawBeam(c, s, v, fx);
+  drawPowerUps(c, s, v, fx);
   for (const j of s.junk) {
     const x = v.satX + (j.x - s.dist);
     if (x < -70 || x > v.vw + 70) continue;

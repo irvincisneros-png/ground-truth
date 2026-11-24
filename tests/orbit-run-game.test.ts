@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SENSOR_ORDER, ZONES } from '../src/orbit-run/content';
 import type { ZoneId } from '../src/orbit-run/content';
 import {
-  BAND, BASE_SPEED, DT, EDGE_COST, MAX_SHIELDS, ORBIT_LEN, createGame, currentStatus, isNightAt, loadSave, nightFactorAt, recordRun,
+  BAND, BASE_SPEED, DT, PICKUP_R, difficultyAt, drainAt, edgeCostAt, MAX_SHIELDS, ORBIT_LEN, createGame, currentStatus, isNightAt, loadSave, nightFactorAt, recordRun,
   segmentAt, sensorStatus, setSensor, speedAt, step, totalData, wallGap,
 } from '../src/orbit-run/game';
 import type { GameState } from '../src/orbit-run/game';
@@ -109,7 +109,7 @@ describe('shields and collisions', () => {
     const s = createGame(2); clearJunk(s);
     s.t = 10; s.a = 0.995; s.v = 0.85;
     step(s, DT, true);
-    expect(s.shields).toBeCloseTo(MAX_SHIELDS - 0.25, 5);
+    expect(s.shields).toBeCloseTo(MAX_SHIELDS - edgeCostAt(difficultyAt(s.dist)), 5);
     expect(s.v).toBeLessThan(0);
     expect(s.over).toBe(false);
   });
@@ -117,16 +117,16 @@ describe('shields and collisions', () => {
     const s = createGame(2); clearJunk(s);
     s.t = 10; s.a = 0.999; s.v = 0.2;
     step(s, DT, false);
-    expect(s.shields).toBeCloseTo(MAX_SHIELDS - EDGE_COST, 5);
+    expect(s.shields).toBeCloseTo(MAX_SHIELDS - edgeCostAt(0), 3);
     expect(s.v).toBeLessThan(0);
   });
   it('sitting on the top edge is not safe: holding climb wears the shields away', () => {
-    const s = createGame(2); clearJunk(s); rightEye(s); run(s, 20, true);
+    const s = createGame(2); clearJunk(s); s.powerUps = []; s.nextPowerX = 1e9; run(s, 30, (g) => { rightEye(g); return true; });
     expect(s.over).toBe(true);
     expect(s.endReason).toBe('shields');
   });
   it('sitting on the bottom edge is not safe either', () => {
-    const s = createGame(2); clearJunk(s); run(s, 20, false);
+    const s = createGame(2); clearJunk(s); s.powerUps = []; s.nextPowerX = 1e9; run(s, 30, (g) => { rightEye(g); return false; });
     expect(s.over).toBe(true);
   });
   it('flying in the middle of the band costs nothing', () => {
@@ -139,11 +139,13 @@ describe('shields and collisions', () => {
 
 describe('power: the wrong eye costs you', () => {
   it('the wrong eye drains power and ends the run', () => {
-    const s = createGame(6); clearJunk(s); setSensor(s, 'microwave');
-    run(s, 4, hover);
-    expect(s.power).toBeLessThan(0.7);
+    const s = createGame(6); clearJunk(s); setSensor(s, 'microwave'); s.powerUps = []; s.nextPowerX = 1e9;
+    s.segments = [{ id: 1, zone: 'ocean', x0: -1000, x1: 1e7, hinted: true, wrongT: 0 }]; s.nextZoneX = 1e9;
+    s.clouds = []; s.nextCloudX = 1e9;
+    run(s, 6, hover);
+    expect(s.power).toBeLessThan(0.8);
     expect(s.combo).toBe(0);
-    run(s, 20, hover);
+    run(s, 30, hover);
     expect(s.over).toBe(true);
     expect(s.endReason).toBe('power');
   });
@@ -167,6 +169,54 @@ describe('power: the wrong eye costs you', () => {
   });
 });
 
+describe('difficulty ramps from gentle to hard', () => {
+  it('difficulty starts at 0 and reaches 1 after a few orbits', () => {
+    expect(difficultyAt(0)).toBe(0);
+    expect(difficultyAt(ORBIT_LEN * 2)).toBeGreaterThan(0.3);
+    expect(difficultyAt(ORBIT_LEN * 10)).toBe(1);
+  });
+  it('the wrong eye drains more than twice as fast at full difficulty', () => {
+    expect(drainAt(1)).toBeGreaterThan(drainAt(0) * 2);
+    expect(edgeCostAt(1)).toBeGreaterThan(edgeCostAt(0));
+  });
+  it('the warm-up has only single junk, no walls, and much less of it', () => {
+    const s = createGame(12);
+    const early = s.junk.filter((j) => j.x < ORBIT_LEN * 0.3);
+    expect(early.every((j) => !j.wall)).toBe(true);
+    const per = (x0: number, x1: number, g: GameState) => new Set(g.junk.filter((j) => j.x >= x0 && j.x < x1).map((j) => Math.round(j.x / 40))).size;
+    const h = createGame(12); h.easy = true;
+    let late = 0;
+    for (let i = 0; i < 200 / DT && !h.over; i++) { rightEye(h); step(h, DT, false); if (Math.abs(h.dist - ORBIT_LEN * 6) < 3) late = per(ORBIT_LEN * 6, ORBIT_LEN * 6 + 1400, h); }
+    expect(per(0, 1400 + 1500, s)).toBeLessThan(late + 1);
+  });
+});
+
+describe('power-ups', () => {
+  const place = (s: GameState, kind: 'repair' | 'solar' | 'boost') => { s.powerUps = [{ id: 77, x: s.dist + 3, a: s.a, kind, got: 0 }]; s.nextPowerX = 1e9; };
+  it('repair kit gives back a shield, never above the max', () => {
+    const s = createGame(1); clearJunk(s); s.shields = 1.5; place(s, 'repair'); step(s, DT, hover(s));
+    expect(s.shields).toBe(2);
+    expect(s.events.some((e) => e.type === 'power')).toBe(true);
+    s.shields = MAX_SHIELDS; place(s, 'repair'); step(s, DT, hover(s)); expect(s.shields).toBe(MAX_SHIELDS);
+  });
+  it('solar panel fills the power bar', () => {
+    const s = createGame(1); clearJunk(s); s.power = 0.2; place(s, 'solar'); step(s, DT, hover(s));
+    expect(s.power).toBe(1);
+  });
+  it('data boost doubles points for a few seconds', () => {
+    const a = createGame(5), b = createGame(5); clearJunk(a); clearJunk(b);
+    a.powerUps = []; a.nextPowerX = 1e9; place(b, 'boost');
+    run(a, 3, hover); run(b, 3, hover);
+    expect(b.score).toBeGreaterThan(a.score * 1.6);
+  });
+  it('power-ups keep coming and are missed if you fly past them', () => {
+    const s = createGame(3); s.easy = true; const seen = new Set<number>();
+    for (let i = 0; i < 90 / DT && !s.over; i++) { rightEye(s); step(s, DT, false); for (const p of s.powerUps) seen.add(p.id); }
+    expect(seen.size).toBeGreaterThanOrEqual(5);
+    expect(PICKUP_R).toBeGreaterThan(15);
+  });
+});
+
 describe('junk patterns', () => {
   it('walls block the whole band except one gap, and the gap is always wide enough', () => {
     const s = createGame(8); s.easy = true;
@@ -180,7 +230,7 @@ describe('junk patterns', () => {
       as.sort((p, q) => p - q);
       expect(as[0]).toBeLessThan(0.15); expect(as[as.length - 1]).toBeGreaterThan(0.85); // edges covered
       let widest = 0; for (let i = 1; i < as.length; i++) widest = Math.max(widest, as[i] - as[i - 1]);
-      expect(widest, `wall at ${x}`).toBeGreaterThanOrEqual(wallGap(Math.floor(x / ORBIT_LEN)) - 1e-6);
+      expect(widest, `wall at ${x}`).toBeGreaterThanOrEqual(wallGap(difficultyAt(x)) - 1e-6);
       expect(widest * BAND - 2 * (11 + 23 * 0.72)).toBeGreaterThan(45); // a real corridor for the satellite
     }
   });
@@ -262,6 +312,13 @@ describe('save of the best score', () => {
     expect(sv.best).toBe(120); expect(sv.bestEasy).toBe(200); expect(sv.runs).toBe(3);
     expect(st.m.has(SAVE_KEY)).toBe(true);
     expect(SAVE_KEY).toBe('ground-truth:orbit-run:v1');
+  });
+  it('sound is on by default, also for old saves that stored the old off default', () => {
+    expect(loadSave(mem()).sound).toBe(true);
+    const st = mem(); st.setItem(SAVE_KEY, JSON.stringify({ v: 1, best: 5, sound: false }));
+    expect(loadSave(st).sound).toBe(true);
+    st.setItem(SAVE_KEY, JSON.stringify({ v: 1, best: 5, sound: false, soundV: 2 }));
+    expect(loadSave(st).sound).toBe(false);
   });
   it('survives corrupt or blocked storage', () => {
     const bad = { getItem: () => '{nope', setItem: () => { throw new Error('blocked'); } };
