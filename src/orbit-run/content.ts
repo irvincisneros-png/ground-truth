@@ -49,6 +49,8 @@ export const ZONES: Record<ZoneId, ZoneDef> = {
 
 export const CLOUD_HINT = 'Clouds! Radar and microwave see through.';
 export const NIGHT_HINT = 'Night! The colour camera needs sunlight.';
+export const EDGE_HINT_TOP = 'Too high! Stay off the top.';
+export const EDGE_HINT_BOTTOM = 'Too low! Stay off the bottom.';
 
 /** One fact per run, rotating. All checked against docs/DATA-SOURCES.md and NASA/ESA public pages. */
 export const FACTS: string[] = [

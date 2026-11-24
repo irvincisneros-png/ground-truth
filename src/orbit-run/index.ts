@@ -2,7 +2,7 @@
 import './orbit-run.css';
 import { DATA_LABEL, DATA_ORDER, DATA_SENSOR, FACTS, SENSORS, SENSOR_ORDER, ZONES } from './content';
 import type { SensorId } from './content';
-import { DT, createGame, loadSave, recordRun, segmentAt, setSensor, step, writeSave, orbitsCompleted } from './game';
+import { DT, createGame, loadSave, recordRun, segmentAt, setSensor, step, writeSave, ORBIT_LEN } from './game';
 import type { GameState } from './game';
 import { attachInput } from './input';
 import { createSfx } from './audio';
@@ -45,6 +45,7 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
           <div class="or-start-how">
             ${legend}
             <div class="or-climb" aria-label="Hold Space, the mouse or a finger to climb"><span class="or-key or-key-wide">Space</span>${svg(ICON.mouse)}${svg(ICON.touch)}<span class="or-climb-cap">${svg(ICON.up, 'or-ctl-arrow')} Hold to climb</span></div>
+            <p class="or-note"><b>The wrong eye drains your power.</b> Don't touch the top or bottom.</p>
             <p class="or-note">Clouds block the heat and colour cameras. Night blocks the colour camera.</p>
           </div>
         </div>
@@ -60,6 +61,7 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
       <div class="or-overlay" data-ov="over" hidden>
         <div class="or-card or-report" role="dialog" aria-label="Data report">
           <h2 class="or-h2">Data report</h2>
+          <p class="or-reason" data-el="reason"></p>
           <div class="or-rows" data-el="rows"></div>
           <div class="or-sum"><div><span>Score</span><b data-el="score">0</b></div><div><span>Orbits</span><b data-el="orbits">0</b></div><div><span>Junk hits</span><b data-el="hits">0</b></div></div>
           <div class="or-newbest" data-el="newbest" hidden>New best score</div>
@@ -157,8 +159,9 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
     const rows = $(root, '[data-el=rows]');
     rows.innerHTML = DATA_ORDER.map((k) => `<div class="or-row" style="--c:${SENSORS[DATA_SENSOR[k]].color}">${svg(EYE_ICON[DATA_SENSOR[k]], 'or-row-icon')}<span>${DATA_LABEL[k]}</span><b>${game.data[k]}</b></div>`).join('');
     $(root, '[data-el=score]').textContent = String(game.score);
-    $(root, '[data-el=orbits]').textContent = String(orbitsCompleted(game));
+    $(root, '[data-el=orbits]').textContent = (game.dist / ORBIT_LEN).toFixed(1);
     $(root, '[data-el=hits]').textContent = String(game.junkHits);
+    $(root, '[data-el=reason]').textContent = game.endReason === 'power' ? 'Out of power. Use the right eye to keep it charged.' : 'Shields gone. Dodge the junk and stay off the edges.';
     $<HTMLElement>(root, '[data-el=newbest]').hidden = !(isBest && game.score > 0);
     $(root, '[data-el=fact]').textContent = FACTS[(sv.runs - 1) % FACTS.length];
     setPhase('over'); show('over'); updateCounts();

@@ -3,7 +3,7 @@
  * World x is "distance flown" in world units. The satellite is always at x = dist.
  * Altitude `a` is 0 (bottom of the band) to 1 (top). Height of the band is BAND units.
  */
-import { DATA_ORDER, SENSORS, ZONES, CLOUD_HINT, NIGHT_HINT, SAVE_KEY } from './content';
+import { DATA_ORDER, SENSORS, ZONES, CLOUD_HINT, NIGHT_HINT, EDGE_HINT_TOP, EDGE_HINT_BOTTOM, SAVE_KEY } from './content';
 import type { DataKind, SensorId, ZoneId } from './content';
 
 export const BASE_SPEED = 200;      // world units per second at the start
@@ -14,16 +14,21 @@ export const BAND = 290;            // altitude band height in world units
 export const SAT_R = 11;            // satellite hit radius (sprite is much larger: forgiving)
 export const JUNK_HIT = 0.72;       // junk hit radius = drawn radius * this
 export const MAX_SHIELDS = 3;
-export const EDGE_COST = 0.25;
+export const EDGE_COST = 0.25;      // shield lost per edge touch (top or bottom)
+export const EDGE_CD = 0.9;         // seconds between edge costs while pinned on an edge
+export const POWER_GAIN = 0.1;      // power per second while collecting
+export const POWER_DRAIN = 0.16;    // power per second with the wrong eye (when the right eye would work)
+export const ZONE_GRACE = 0.6;      // seconds after a zone starts before a wrong eye drains power
 export const GEN_AHEAD = 1700;
 export const COLLECT_RATE = 4.5;    // data points per second when matched
 export const COMBO_GRACE = 1.3;     // seconds without collecting before the combo resets
 export const DT = 1 / 60;
 
 export type Status = 'ok' | 'wrong' | 'cloud' | 'night';
+export type EndReason = 'shields' | 'power' | null;
 
 export interface Segment { id: number; zone: ZoneId; x0: number; x1: number; hinted: boolean; wrongT: number }
-export interface Junk { id: number; x: number; a: number; r: number; vy: number; kind: number; rot: number; spin: number; hitT: number }
+export interface Junk { id: number; x: number; a: number; r: number; vy: number; kind: number; rot: number; spin: number; hitT: number; wall?: boolean }
 export interface Cloud { id: number; x0: number; x1: number; hinted: boolean; seed: number }
 export interface Hint { text: string; t: number; dur: number; id: number }
 
@@ -32,6 +37,7 @@ export type GameEvent =
   | { type: 'combo'; mult: number }
   | { type: 'hit'; junkId: number }
   | { type: 'edge'; top: boolean }
+  | { type: 'drain' }
   | { type: 'orbit'; orbit: number }
   | { type: 'switch'; sensor: SensorId }
   | { type: 'hint' }
@@ -49,6 +55,10 @@ export interface GameState {
   climb: boolean;
   sensor: SensorId;
   shields: number;
+  power: number;
+  draining: boolean;
+  endReason: EndReason;
+  edgeHinted: boolean;
   invuln: number;
   edgeCd: number;
   combo: number;
@@ -65,6 +75,7 @@ export interface GameState {
   nextJunkX: number;
   nextCloudX: number;
   lastJunkA: number;
+  lastGapA: number;
   nextId: number;
   nightOrbitHinted: number; // orbit index of the last night we showed a hint for (-1 none)
   cloudHintCount: number;
@@ -125,9 +136,9 @@ export function cloudAt(s: GameState, x: number): Cloud | null {
 export function createGame(seed = 1, easy = false): GameState {
   const s: GameState = {
     rng: seed | 0, easy, t: 0, dist: 0, speed: BASE_SPEED, orbit: 1, a: 0.5, v: 0, climb: false,
-    sensor: 'heat', shields: MAX_SHIELDS, invuln: 0, edgeCd: 0, combo: 0, mult: 1, comboGap: 0, collectAcc: 0, score: 0,
+    sensor: 'heat', shields: MAX_SHIELDS, power: 1, draining: false, endReason: null, edgeHinted: false, invuln: 0, edgeCd: 0, combo: 0, mult: 1, comboGap: 0, collectAcc: 0, score: 0,
     data: { temperature: 0, forest: 0, sea: 0, ice: 0 }, junkHits: 0,
-    segments: [], junk: [], clouds: [], nextZoneX: -900, nextJunkX: 1500, nextCloudX: 2300, lastJunkA: 0.5, nextId: 1,
+    segments: [], junk: [], clouds: [], nextZoneX: -900, nextJunkX: 1500, nextCloudX: 2300, lastJunkA: 0.5, lastGapA: 0.5, nextId: 1,
     nightOrbitHinted: -1, cloudHintCount: 0, nightHintCount: 0, hint: null, status: 'wrong', events: [], over: false,
   };
   // The first stretch is a long warm ocean so the player can settle in and see the beam work.
@@ -161,26 +172,53 @@ function ensureContent(s: GameState): void {
   }
   while (s.nextJunkX < horizon) spawnJunk(s);
 }
-function addJunk(s: GameState, x: number, a: number): void {
-  s.junk.push({ id: s.nextId++, x, a, r: range(s, 17, 27), vy: (rnd(s) - 0.5) * 0.12, kind: Math.floor(rnd(s) * 4), rot: rnd(s) * 6.28, spin: (rnd(s) - 0.5) * 2.2, hitT: 0 });
+function addJunk(s: GameState, x: number, a: number, wall = false): void {
+  const r = wall ? range(s, 18, 23) : range(s, 17, 27);
+  s.junk.push({ id: s.nextId++, x, a, r, vy: wall ? 0 : (rnd(s) - 0.5) * 0.12, kind: Math.floor(rnd(s) * 4), rot: rnd(s) * 6.28, spin: (rnd(s) - 0.5) * 2.2, hitT: 0, wall });
+}
+/** Gap width (in band fractions, between junk centres) for a wall in this orbit: wide at first, tighter later. */
+export const wallGap = (orbitIdx: number) => Math.max(0.36, 0.46 - 0.025 * orbitIdx);
+/**
+ * A wall of junk across the whole band, top to bottom, with one gap. The gap jumps away from the last
+ * one, so the player has to move, and hugging the top or bottom edge is never safe.
+ */
+function addWall(s: GameState, x: number, orbitIdx: number): void {
+  const gap = wallGap(orbitIdx);
+  const lo = 0.08 + gap / 2, hi = 0.92 - gap / 2;
+  let gc = lo + rnd(s) * (hi - lo);
+  if (Math.abs(gc - s.lastGapA) < 0.25) gc = s.lastGapA > 0.5 ? lo + rnd(s) * 0.15 : hi - rnd(s) * 0.15;
+  gc = Math.min(hi, Math.max(lo, gc));
+  const step = 0.15;
+  for (let a = gc + gap / 2; a <= 1.02; a += step) addJunk(s, x, Math.min(0.97, a), true);
+  for (let a = gc - gap / 2; a >= -0.02; a -= step) addJunk(s, x, Math.max(0.03, a), true);
+  s.lastGapA = gc; s.lastJunkA = gc;
 }
 function spawnJunk(s: GameState): void {
   const orbitIdx = Math.floor(s.nextJunkX / ORBIT_LEN);
   const x = s.nextJunkX;
-  let a = 0.1 + rnd(s) * 0.8;
-  if (Math.abs(a - s.lastJunkA) < 0.2) a = 0.1 + rnd(s) * 0.8;
-  if (orbitIdx >= 1 && rnd(s) < 0.35) {
+  const roll = rnd(s);
+  const wallChance = orbitIdx === 0 ? 0.4 : 0.55;
+  let gapTime: number;
+  if (x > 2200 && roll < wallChance) {
+    addWall(s, x, orbitIdx);
+    gapTime = Math.max(1.9, 2.6 - 0.12 * Math.min(orbitIdx, 5)) + rnd(s) * 0.6;
+  } else if (orbitIdx >= 1 && roll < wallChance + 0.2) {
     // A pair with a clear gap: always passable.
-    const gap = 0.52 + rnd(s) * 0.12;
-    const low = 0.04 + rnd(s) * (0.92 - gap - 0.04);
+    const gap = 0.46 + rnd(s) * 0.1;
+    const low = 0.03 + rnd(s) * (0.94 - gap - 0.03);
     addJunk(s, x, low);
     addJunk(s, x + 36, low + gap);
     s.lastJunkA = low + gap / 2;
+    gapTime = Math.max(1.3, 1.9 - 0.1 * Math.min(orbitIdx, 5)) + rnd(s) * 0.7;
   } else {
+    // Singles reach right to the edges, so the top and bottom are not hiding places.
+    let a = 0.04 + rnd(s) * 0.92;
+    if (Math.abs(a - s.lastJunkA) < 0.2) a = 0.04 + rnd(s) * 0.92;
+    if (rnd(s) < 0.3) a = rnd(s) < 0.5 ? 0.04 + rnd(s) * 0.08 : 0.88 + rnd(s) * 0.08;
     addJunk(s, x, a);
     s.lastJunkA = a;
+    gapTime = Math.max(1.1, 1.6 - 0.1 * Math.min(orbitIdx, 5)) + rnd(s) * 0.8;
   }
-  const gapTime = Math.max(1.7, 2.2 + rnd(s) * 1.3 - 0.1 * Math.min(orbitIdx, 5));
   s.nextJunkX += gapTime * speedAt(x);
 }
 
@@ -205,22 +243,24 @@ function showHint(s: GameState, text: string, dur = 3.1): void {
 /* ---------- Easy mode autopilot ---------- */
 /** Choose the altitude that dodges upcoming junk (accounts for travel time and drift). */
 export function autoTarget(s: GameState): number {
-  const look = Math.max(380, s.speed * 1.9);
-  const near = s.junk.filter((j) => j.hitT === 0 && j.x > s.dist - 60 && j.x < s.dist + look);
+  const look = Math.max(420, s.speed * 2.4);
+  const near = s.junk.filter((j) => j.hitT === 0 && j.x > s.dist - 40 && j.x < s.dist + look).sort((p, q) => p.x - q.x);
   if (!near.length) return s.a + (0.5 - s.a) * 0.02; // drift gently to mid band
+  // Plan for the next obstacle (a wall, pair or single) first; later ones only nudge the choice.
+  const firstX = near[0].x;
   let best = s.a, bestCost = Infinity;
-  for (let c = 0.07; c <= 0.931; c += 0.02) {
+  for (let c = 0.06; c <= 0.941; c += 0.01) {
     let cost = 0.5 * Math.abs(c - s.a) + 0.1 * Math.abs(c - 0.5);
     for (const j of near) {
+      const w = j.x - firstX < 80 ? 1 : 0.25;
       const t = Math.max(0, (j.x - s.dist) / s.speed);
-      const reach = Math.min(Math.abs(c - s.a), 0.62 * t);
+      const reach = Math.min(Math.abs(c - s.a), (c > s.a ? 0.7 : 0.42) * t);
       const alt = s.a + Math.sign(c - s.a) * reach;
       const ja = Math.min(0.97, Math.max(0.03, j.a + j.vy * t));
-      const clear = Math.abs(alt - ja) * BAND - (SAT_R + j.r * JUNK_HIT + 34);
-      if (clear < 0) cost += 60 + -clear * 0.6;
-      // junk that will still be near x when we arrive at c also matters
-      const clear2 = Math.abs(c - ja) * BAND - (SAT_R + j.r * JUNK_HIT + 34);
-      if (clear2 < 0) cost += 30 + -clear2 * 0.3;
+      const need = SAT_R + j.r * JUNK_HIT + 14;
+      const clear = Math.abs(alt - ja) * BAND - need;
+      if (clear < 0) cost += w * (60 + -clear * 0.6);
+      else if (clear < 20) cost += w * (20 - clear) * 0.3;
     }
     if (cost < bestCost) { bestCost = cost; best = c; }
   }
@@ -228,7 +268,7 @@ export function autoTarget(s: GameState): number {
 }
 
 /* ---------- Step ---------- */
-const UP = 4.4, DOWN = 2.1, V_UP = 0.88, V_DN = 0.52, EDGE_V_TOP = 0.55, EDGE_V_BOT = 0.45, REVERSE_BRAKE = 8, KICK = 0.36, DRAG = 0.5;
+const UP = 4.4, DOWN = 2.1, V_UP = 0.88, V_DN = 0.52, REVERSE_BRAKE = 8, KICK = 0.36, DRAG = 0.5;
 
 export function step(s: GameState, dt: number, climb: boolean): void {
   if (s.over) return;
@@ -262,13 +302,14 @@ export function step(s: GameState, dt: number, climb: boolean): void {
       const top = s.a >= 1;
       const speedIn = Math.abs(s.v);
       s.a = top ? 1 : 0;
-      const hard = speedIn > (top ? EDGE_V_TOP : EDGE_V_BOT);
-      if (hard && s.edgeCd === 0 && s.t > 3) {
+      // Any touch of the top or bottom costs a little shield, so sitting on an edge is never safe.
+      if (s.edgeCd === 0 && s.t > 3) {
         s.shields = Math.max(0, s.shields - EDGE_COST);
-        s.edgeCd = 1.2;
+        s.edgeCd = EDGE_CD;
         s.events.push({ type: 'edge', top });
+        if (!s.edgeHinted) { s.edgeHinted = true; showHint(s, top ? EDGE_HINT_TOP : EDGE_HINT_BOTTOM, 3); }
       }
-      s.v = hard ? -s.v * 0.45 : 0; // nudge back
+      s.v = top ? -Math.max(0.3, speedIn * 0.45) : Math.max(0.3, speedIn * 0.45); // bounce back into the band
     }
   }
 
@@ -321,6 +362,19 @@ export function step(s: GameState, dt: number, climb: boolean): void {
   }
   if (s.hint) { s.hint.t += dt; if (s.hint.t > s.hint.dur) s.hint = null; }
 
+  // Power: collecting charges it. A wrong eye drains it, but only when the right eye would work here
+  // (under cloud or at night there may be nothing to collect, and that is not the player's fault).
+  const rightEye = ZONES[seg.zone].sensor;
+  const avoidable = status === 'wrong' && sensorStatus(rightEye, seg.zone, !!cloud, night) === 'ok';
+  const inZone = (s.dist - seg.x0) / Math.max(1, s.speed);
+  const wasDraining = s.draining;
+  s.draining = avoidable && inZone > ZONE_GRACE && s.t > 1.5;
+  if (s.draining) {
+    s.power = Math.max(0, s.power - POWER_DRAIN * dt);
+    if (!wasDraining) s.events.push({ type: 'drain' });
+    s.combo = 0; s.mult = 1; s.comboGap = 0;
+  } else if (status === 'ok') s.power = Math.min(1, s.power + POWER_GAIN * dt);
+
   if (status === 'ok') {
     s.comboGap = 0;
     s.collectAcc += dt * COLLECT_RATE;
@@ -340,7 +394,8 @@ export function step(s: GameState, dt: number, climb: boolean): void {
     if (s.comboGap > COMBO_GRACE && s.combo > 0) { s.combo = 0; s.mult = 1; }
   }
 
-  if (s.shields <= 0.001) { s.shields = 0; s.over = true; s.events.push({ type: 'over' }); }
+  if (s.shields <= 0.001) { s.shields = 0; s.over = true; s.endReason = 'shields'; s.events.push({ type: 'over' }); }
+  else if (s.power <= 0) { s.power = 0; s.over = true; s.endReason = 'power'; s.events.push({ type: 'over' }); }
 }
 
 /* ---------- Report + save ---------- */

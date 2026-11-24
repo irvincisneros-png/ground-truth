@@ -9,7 +9,7 @@
 ## Core loop
 - **Flight:** the satellite flies right, automatically, over a scrolling strip of Earth.
   - **Hold or tap control:** hold Space, the mouse or a touch to climb, and let go to sink. Movement is smooth and floaty, not punishing.
-  - **Altitude band:** the satellite moves within a band. Touching its top or bottom edge is not instant death; it nudges back and costs a little shield.
+  - **Altitude band:** the satellite moves within a band marked by red dashed danger lines. Any touch of the top or bottom edge bounces the satellite back and costs a quarter shield (once per 0.9 s while pinned), so camping on an edge ends the run in about 10 s. A "Too high" / "Too low" hint shows on the first touch.
 - **Terrain zones:** the strip below scrolls through ocean, reef, forest, sea ice and open sea, each lasting 4–8 s, in a random order with sensible transitions.
   - The zone is shown by its look (blue sea, turquoise reef, green canopy, white ice) and a small label at the bottom edge ("Forest").
 - **Sensor switching:** press 1–4, or tap the 4 big eye buttons along the bottom on touch, to pick a sensor. The active eye glows, and a beam shines down from the satellite.
@@ -19,15 +19,19 @@
   - **Microwave eye:** sea ice. Collects "ice cover".
 - **Collecting data:** a correct sensor over its zone collects glowing data points (+1 each) streaming up the beam into the satellite.
   - A wrong sensor collects nothing, and a gentle hint appears once per zone, for example "Ice? Try the microwave eye".
+- **Power (penalty for the wrong eye):** a power bar under the shields. Collecting charges it (+0.10/s). A wrong eye drains it (−0.16/s, about 6 s from full to empty) and resets the combo, with a "Wrong eye: losing power" tag. There is a 0.6 s grace after the ground changes, and no drain when the right eye could not work anyway (cloud over warm sea or reef, night over forest). Empty power ends the run, also in Sensor-only mode.
 - **Hazards:**
-  - **Space junk:** drifting debris to dodge by climbing or sinking. A hit costs one shield (3 shields per run), and losing all three ends the run.
+  - **Space junk:** a hit costs one shield (3 shields per run), and losing all three ends the run. Three patterns, all reaching the edges so there is no safe lane:
+    - **Walls:** a column of junk across the whole band with one gap (0.46 of the band at first, down to 0.36). The gap jumps away from the last one, so the player must move. 40% of obstacles in orbit 1, 55% later.
+    - **Pairs** (from orbit 2) and **singles**, 30% of which sit right by an edge.
+    - Spacing tightens each orbit. A bot that only hovers mid-band survives about 30 s.
   - **Cloud banks:** clouds below block the heat and colour cameras (the beam scatters and collects nothing). Radar and microwave still work through cloud, with a hint: "Clouds! Radar and microwave see through."
   - **Night side:** the colour camera stops working at night (the beam goes dark). Every other sensor works, with the hint "Night! The colour camera needs sunlight."
 - **Pacing:** each loop around Earth is an "orbit", and speed rises a little each orbit. A run should last about 1–3 minutes.
 - **Easy mode** (a toggle on the start card): altitude is automatic and avoids junk, so the student only switches sensors. Make it obvious and shame-free ("Sensor-only mode").
 
 ## End of run: Data report
-- **Totals:** a short card with data points by type and orbits completed.
+- **Totals:** a short card with data points by type, orbits flown (one decimal) and junk hits, plus why the run ended (out of power, or shields gone).
 - **One rotating fact line tied to real science**, for example:
   - "Real satellites collect millions of ocean temperatures every day. Scientists use them to spot marine heatwaves that bleach coral."
   - "The radar ruler measures sea height to about 3 cm on each pass. Averaging millions of passes shows the sea rising."

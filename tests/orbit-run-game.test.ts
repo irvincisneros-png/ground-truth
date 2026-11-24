@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { SENSOR_ORDER, ZONES } from '../src/orbit-run/content';
 import type { ZoneId } from '../src/orbit-run/content';
 import {
-  BAND, BASE_SPEED, DT, MAX_SHIELDS, ORBIT_LEN, createGame, currentStatus, isNightAt, loadSave, nightFactorAt, recordRun,
-  sensorStatus, setSensor, speedAt, step, totalData,
+  BAND, BASE_SPEED, DT, EDGE_COST, MAX_SHIELDS, ORBIT_LEN, createGame, currentStatus, isNightAt, loadSave, nightFactorAt, recordRun,
+  segmentAt, sensorStatus, setSensor, speedAt, step, totalData, wallGap,
 } from '../src/orbit-run/game';
 import type { GameState } from '../src/orbit-run/game';
 import { SAVE_KEY } from '../src/orbit-run/content';
@@ -13,6 +13,8 @@ const run = (s: GameState, secs: number, climb: boolean | ((s: GameState) => boo
   for (let i = 0; i < secs / DT && !s.over; i++) step(s, DT, typeof climb === 'function' ? climb(s) : climb);
 };
 const clearJunk = (s: GameState) => { s.junk = []; s.nextJunkX = 1e9; };
+const hover = (s: GameState) => s.a < 0.5; // hold around the middle of the band
+const rightEye = (s: GameState) => setSensor(s, ZONES[segmentAt(s, s.dist).zone].sensor);
 
 describe('sensor x zone x condition matrix', () => {
   const zones = Object.keys(ZONES) as ZoneId[];
@@ -61,7 +63,7 @@ describe('collecting in the live game', () => {
   it('shows a wrong-sensor hint once per zone only', () => {
     const s = createGame(3); setSensor(s, 'microwave'); clearJunk(s);
     let hints = 0; const seen = new Set<string>();
-    for (let i = 0; i < 6 / DT; i++) { step(s, DT, false); if (s.hint && !seen.has(String(s.hint.id))) { seen.add(String(s.hint.id)); hints++; } }
+    for (let i = 0; i < 6 / DT; i++) { step(s, DT, hover(s)); if (s.hint && !seen.has(String(s.hint.id))) { seen.add(String(s.hint.id)); hints++; } }
     expect(hints).toBe(1);
     expect(s.hint === null || s.hint.text.length > 0).toBe(true);
   });
@@ -111,16 +113,76 @@ describe('shields and collisions', () => {
     expect(s.v).toBeLessThan(0);
     expect(s.over).toBe(false);
   });
-  it('a gentle drift against the edge is free', () => {
+  it('even a gentle touch of the edge costs a little shield', () => {
     const s = createGame(2); clearJunk(s);
     s.t = 10; s.a = 0.999; s.v = 0.2;
     step(s, DT, false);
-    expect(s.shields).toBe(MAX_SHIELDS);
+    expect(s.shields).toBeCloseTo(MAX_SHIELDS - EDGE_COST, 5);
+    expect(s.v).toBeLessThan(0);
   });
-  it('holding climb for long never ends the run by itself', () => {
-    const s = createGame(2); clearJunk(s); run(s, 20, true);
+  it('sitting on the top edge is not safe: holding climb wears the shields away', () => {
+    const s = createGame(2); clearJunk(s); rightEye(s); run(s, 20, true);
+    expect(s.over).toBe(true);
+    expect(s.endReason).toBe('shields');
+  });
+  it('sitting on the bottom edge is not safe either', () => {
+    const s = createGame(2); clearJunk(s); run(s, 20, false);
+    expect(s.over).toBe(true);
+  });
+  it('flying in the middle of the band costs nothing', () => {
+    const s = createGame(2); clearJunk(s);
+    run(s, 20, (g) => { rightEye(g); return hover(g); });
+    expect(s.shields).toBe(MAX_SHIELDS);
     expect(s.over).toBe(false);
-    expect(s.shields).toBeGreaterThan(2);
+  });
+});
+
+describe('power: the wrong eye costs you', () => {
+  it('the wrong eye drains power and ends the run', () => {
+    const s = createGame(6); clearJunk(s); setSensor(s, 'microwave');
+    run(s, 4, hover);
+    expect(s.power).toBeLessThan(0.7);
+    expect(s.combo).toBe(0);
+    run(s, 20, hover);
+    expect(s.over).toBe(true);
+    expect(s.endReason).toBe('power');
+  });
+  it('the right eye keeps power topped up', () => {
+    const s = createGame(6); clearJunk(s);
+    run(s, 60, (g) => { rightEye(g); return hover(g); });
+    expect(s.over).toBe(false);
+    expect(s.power).toBeGreaterThan(0.6);
+  });
+  it('no drain when the right eye could not work anyway (cloud over the warm sea)', () => {
+    const s = createGame(6); clearJunk(s); setSensor(s, 'radar');
+    s.clouds = [{ id: 1, x0: -1000, x1: 1e6, hinted: true, seed: 1 }]; s.nextCloudX = 1e9;
+    s.segments = [{ id: 1, zone: 'ocean', x0: -1000, x1: 1e6, hinted: true, wrongT: 0 }]; s.nextZoneX = 1e9;
+    run(s, 5, hover);
+    expect(s.power).toBe(1);
+  });
+  it('a short grace after the ground changes gives time to switch', () => {
+    const s = createGame(6); clearJunk(s); setSensor(s, 'microwave');
+    run(s, 0.4, hover);
+    expect(s.power).toBe(1);
+  });
+});
+
+describe('junk patterns', () => {
+  it('walls block the whole band except one gap, and the gap is always wide enough', () => {
+    const s = createGame(8); s.easy = true;
+    const cols = new Map<number, number[]>(), seen = new Set<number>();
+    for (let i = 0; i < 90 / DT && !s.over; i++) {
+      rightEye(s); step(s, DT, false);
+      for (const j of s.junk) if (j.wall && !seen.has(j.id)) { seen.add(j.id); cols.set(j.x, [...(cols.get(j.x) ?? []), j.a]); }
+    }
+    expect(cols.size).toBeGreaterThan(0);
+    for (const [x, as] of cols) {
+      as.sort((p, q) => p - q);
+      expect(as[0]).toBeLessThan(0.15); expect(as[as.length - 1]).toBeGreaterThan(0.85); // edges covered
+      let widest = 0; for (let i = 1; i < as.length; i++) widest = Math.max(widest, as[i] - as[i - 1]);
+      expect(widest, `wall at ${x}`).toBeGreaterThanOrEqual(wallGap(Math.floor(x / ORBIT_LEN)) - 1e-6);
+      expect(widest * BAND - 2 * (11 + 23 * 0.72)).toBeGreaterThan(45); // a real corridor for the satellite
+    }
   });
 });
 
@@ -176,8 +238,8 @@ describe('determinism and content', () => {
 describe('easy mode auto-altitude', () => {
   it('dodges all junk across seeds for 2.5 minutes with no shield loss', () => {
     for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
-      const s = createGame(seed, true); setSensor(s, 'heat');
-      run(s, 150, false);
+      const s = createGame(seed, true);
+      run(s, 150, (g) => { rightEye(g); return false; });
       expect(s.junkHits, `seed ${seed}`).toBe(0);
       expect(s.shields).toBe(MAX_SHIELDS);
       expect(s.over).toBe(false);

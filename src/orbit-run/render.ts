@@ -405,7 +405,7 @@ function drawZoneFlags(c: C2, s: GameState, v: View) {
 }
 
 /* ---------- beam ---------- */
-const STATUS_TAG: Record<'wrong' | 'cloud' | 'night', string> = { wrong: 'Wrong eye', cloud: 'Blocked by cloud', night: 'Too dark' };
+const STATUS_TAG: Record<'wrong' | 'cloud' | 'night', string> = { wrong: 'Wrong eye: losing power', cloud: 'Blocked by cloud', night: 'Too dark' };
 function drawBeam(c: C2, s: GameState, v: View, fx: Fx) {
   if (s.over) return;
   const sensor = SENSORS[s.sensor];
@@ -614,6 +614,29 @@ function drawJunkWarnings(c: C2, s: GameState, v: View, fx: Fx) {
   }
 }
 
+/** Red danger strips at the top and bottom of the flying band. They glow brighter as the satellite gets close. */
+function drawEdges(c: C2, s: GameState, v: View, fx: Fx) {
+  const top = yOf(v, 1) - 14, bot = yOf(v, 0) + 14;
+  const pulse = fx.reduced ? 0.5 : 0.5 + 0.5 * Math.sin(fx.time * 6);
+  for (const isTop of [true, false]) {
+    const near = isTop ? clamp01((s.a - 0.78) / 0.22) : clamp01((0.22 - s.a) / 0.22);
+    const y = isTop ? top : bot, dir = isTop ? -1 : 1, depth = 26 + near * 14;
+    const g = c.createLinearGradient(0, y, 0, y + dir * depth);
+    const a0 = 0.16 + near * (0.3 + 0.2 * pulse);
+    g.addColorStop(0, `rgba(255,92,92,${a0})`); g.addColorStop(1, 'rgba(255,92,92,0)');
+    c.fillStyle = g; c.fillRect(0, isTop ? y - depth : y, v.vw, depth);
+    c.strokeStyle = `rgba(255,128,118,${0.35 + near * 0.55})`; c.lineWidth = 1.6; c.setLineDash([10, 8]);
+    c.lineDashOffset = (s.dist * 0.6) % 18;
+    c.beginPath(); c.moveTo(0, y); c.lineTo(v.vw, y); c.stroke(); c.setLineDash([]);
+    if (near > 0.05) {
+      c.globalAlpha = near; c.fillStyle = '#ffd0cc'; c.font = `700 ${Math.max(11, 11 / v.scale)}px ${FONT}`;
+      c.textAlign = 'right'; c.textBaseline = isTop ? 'bottom' : 'top';
+      c.fillText(isTop ? 'Too high' : 'Too low', v.vw - 14, y + dir * 4);
+      c.globalAlpha = 1; c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+    }
+  }
+}
+
 /* ---------- HUD (css px) ---------- */
 function hintSensor(text: string): SensorId | null { for (const z of Object.values(ZONES)) if (z.hint === text) return z.sensor; return null; }
 function shieldPath(c: C2, w: number, h: number) { c.beginPath(); c.moveTo(w / 2, 0); c.lineTo(w, h * 0.17); c.lineTo(w, h * 0.54); c.quadraticCurveTo(w, h * 0.85, w / 2, h); c.quadraticCurveTo(0, h * 0.85, 0, h * 0.54); c.lineTo(0, h * 0.17); c.closePath(); }
@@ -657,6 +680,18 @@ function drawHud(c: C2, s: GameState, v: View, fx: Fx, best: number) {
     }
     shieldPath(c, w, h); c.strokeStyle = frac > 0 ? '#e2f1ff' : 'rgba(124,150,204,.5)'; c.lineWidth = 1.5; c.stroke();
     c.restore();
+  }
+  // power: the wrong eye drains it, collecting charges it
+  {
+    const px0 = sx0, py0 = sy0 + (narrow ? 29 : 35), pw2 = (narrow ? 23 : 28) * (MAX_SHIELDS - 1) + (narrow ? 19 : 23), ph2 = narrow ? 11 : 13;
+    const low = s.power < 0.3, flash = (s.draining || low) && !fx.reduced && Math.floor(fx.time * 5) % 2 === 0;
+    c.fillStyle = 'rgba(8,16,32,.75)'; rr(c, px0, py0, pw2, ph2, ph2 / 2); c.fill();
+    const col = s.power > 0.55 ? '#7be07b' : s.power > 0.3 ? '#ffc04d' : '#ff6a6a';
+    if (s.power > 0.01) { c.fillStyle = flash ? '#ff9a9a' : col; rr(c, px0 + 2, py0 + 2, Math.max(ph2 - 4, (pw2 - 4) * s.power), ph2 - 4, (ph2 - 4) / 2); c.fill(); }
+    c.strokeStyle = s.draining ? '#ff8a80' : 'rgba(200,220,255,.55)'; c.lineWidth = s.draining ? 1.6 : 1; rr(c, px0, py0, pw2, ph2, ph2 / 2); c.stroke();
+    c.textAlign = 'left'; c.font = font(narrow ? 10 : 11, 800);
+    c.fillStyle = s.draining ? '#ff9a9a' : '#9fb0d4';
+    c.fillText(s.draining ? 'POWER  draining' : 'POWER', px0 + pw2 + 7, py0 + ph2 - 2);
   }
   // combo
   const cx = v.w / 2;
@@ -732,6 +767,7 @@ export function render(c: C2, s: GameState, v: View, fx: Fx, climbing: boolean, 
   drawLimb(c, s, v, fx);
   drawZoneLabels(c, s, v);
   if (hud) drawZoneFlags(c, s, v);
+  drawEdges(c, s, v, fx);
   drawBeam(c, s, v, fx);
   for (const j of s.junk) {
     const x = v.satX + (j.x - s.dist);
