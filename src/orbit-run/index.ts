@@ -7,7 +7,7 @@ import type { GameState } from './game';
 import { attachInput } from './input';
 import { createSfx } from './audio';
 import { EYE_ICON, ICON, svg } from './icons';
-import { computeView, createFx, fxEvents, fxUpdate, render } from './render';
+import { computeView, createFx, fxEvents, fxUpdate, render, texturesBusy } from './render';
 import type { Quality, View } from './render';
 
 type Phase = 'start' | 'playing' | 'paused' | 'over';
@@ -20,6 +20,9 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
   const sfx = createSfx();
   sfx.enabled = save.sound;
 
+  // which eye reads which ground: the one thing to remember (shown on the start and pause cards)
+  const legend = `<div class="or-legend" role="list" aria-label="Which eye reads what">${SENSOR_ORDER.map((id) => `<div class="or-leg" role="listitem" style="--c:${SENSORS[id].color}"><span class="or-key">${SENSORS[id].key}</span>${svg(EYE_ICON[id], 'or-leg-icon')}<span class="or-leg-text"><b>${SENSORS[id].label}</b><small>${Object.values(ZONES).filter((z) => z.sensor === id).map((z, i) => (i ? z.label.toLowerCase() : z.label)).join(', ')}</small></span></div>`).join('')}</div>`;
+
   root.classList.add('or-root');
   if (root.getBoundingClientRect().height < 300) root.style.height = '100dvh';
   root.innerHTML = `
@@ -30,23 +33,26 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
         <button class="or-tool" data-act="pause" type="button" aria-label="Pause">${svg(ICON.pause)}</button>
       </div>
       <div class="or-overlay" data-ov="start">
-        <div class="or-card">
-          <div class="or-badge">${svg(ICON.satellite)}</div>
-          <h1 class="or-title">Orbit Run</h1>
-          <p class="or-line">Match the right eye to the ground below. Dodge the space junk.</p>
-          <div class="or-controls" aria-label="Controls">
-            <div class="or-ctl"><div class="or-ctl-icons"><span class="or-key or-key-wide">Space</span>${svg(ICON.mouse)}${svg(ICON.touch)}</div><div class="or-ctl-cap">${svg(ICON.up, 'or-ctl-arrow')} Hold to climb</div></div>
-            <div class="or-ctl"><div class="or-ctl-icons"><span class="or-key">1</span><span class="or-key">2</span><span class="or-key">3</span><span class="or-key">4</span></div><div class="or-ctl-cap">Switch eye</div></div>
+        <div class="or-card or-start">
+          <div class="or-start-main">
+            <h1 class="or-title">Orbit Run</h1>
+            <p class="or-line">Match the right eye to the ground below. Dodge the space junk.</p>
+            <button class="or-btn or-primary" data-act="play" type="button">Play</button>
+            <button class="or-toggle" data-act="easy" type="button" role="switch" aria-checked="false"><span class="or-switch"><span></span></span><span class="or-toggle-text"><b>Sensor-only mode</b><small>The satellite flies itself</small></span></button>
+            <div class="or-best" data-el="best"></div>
+            <button class="or-link" data-act="exit" type="button">Back to missions</button>
           </div>
-          <button class="or-btn or-primary" data-act="play" type="button">Play</button>
-          <button class="or-toggle" data-act="easy" type="button" role="switch" aria-checked="false"><span class="or-switch"><span></span></span><span class="or-toggle-text"><b>Sensor-only mode</b><small>The satellite flies itself</small></span></button>
-          <div class="or-best" data-el="best"></div>
-          <button class="or-link" data-act="exit" type="button">Back to missions</button>
+          <div class="or-start-how">
+            ${legend}
+            <div class="or-climb" aria-label="Hold Space, the mouse or a finger to climb"><span class="or-key or-key-wide">Space</span>${svg(ICON.mouse)}${svg(ICON.touch)}<span class="or-climb-cap">${svg(ICON.up, 'or-ctl-arrow')} Hold to climb</span></div>
+            <p class="or-note">Clouds block the heat and colour cameras. Night blocks the colour camera.</p>
+          </div>
         </div>
       </div>
       <div class="or-overlay" data-ov="paused" hidden>
         <div class="or-card or-card-small">
           <h2 class="or-h2">Paused</h2>
+          ${legend}
           <button class="or-btn or-primary" data-act="resume" type="button">Resume</button>
           <button class="or-link" data-act="exit" type="button">Back to missions</button>
         </div>
@@ -88,6 +94,8 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
   const fx = createFx(reduced);
   let raf = 0, last = 0, acc = 0, overTimer = 0;
   let frameEma = 1 / 60, lowFor = 0, lastHint = '';
+  let suggested: SensorId | null = null;
+  let drawMs = 0; // smoothed cost of drawing one frame (QA only)
   let disposed = false;
   let quality: Quality = 3;
 
@@ -102,7 +110,12 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
     eyes.forEach((b) => { const on = b.dataset.sensor === game.sensor; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
   }
   function updateCounts() {
-    counts.forEach((el) => { const k = el.dataset.count as keyof GameState['data']; const n = String(game.data[k]); if (el.textContent !== n) el.textContent = n; });
+    counts.forEach((el) => {
+      const k = el.dataset.count as keyof GameState['data']; const n = String(game.data[k]);
+      if (el.textContent === n) return;
+      const up = Number(n) > Number(el.textContent); el.textContent = n;
+      if (up && !reduced && phase === 'playing' && quality > 1) el.animate?.([{ transform: 'scale(1.45)' }, { transform: 'scale(1)' }], { duration: 170, easing: 'ease-out' }); // each data point lands on its counter
+    });
   }
   function setSoundUi() {
     soundBtn.innerHTML = svg(sfx.enabled ? ICON.soundOn : ICON.soundOff);
@@ -196,7 +209,8 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
     if (dt > 0.1) dt = 0.1;
     // adaptive quality
     frameEma += (dt - frameEma) * 0.08;
-    if (phase === 'playing' || phase === 'start') {
+    if (texturesBusy()) { lowFor = 0; frameEma = Math.min(frameEma, 1 / 50); } // art is still being drawn: not a fair fps sample
+    else if (phase === 'playing' || phase === 'start') {
       if (1 / frameEma < 45 && quality > 1) { lowFor += dt; if (lowFor > 1.5) { quality = (quality - 1) as Quality; fx.quality = quality; lowFor = 0; frameEma = 1 / 60; resize(); } }
       else lowFor = Math.max(0, lowFor - dt);
     }
@@ -229,12 +243,18 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
       overTimer -= dt;
       if (overTimer <= 0) { overTimer = 0; finishRun(); }
     }
+    const d0 = performance.now();
     fxUpdate(fx, game, view, phase === 'paused' ? 0 : dt, climbing);
     render(ctx, game, view, fx, climbing, easy ? save.bestEasy : save.best, phase !== 'start');
+    drawMs += (performance.now() - d0 - drawMs) * 0.05;
     if (phase !== 'paused') {
       updateCounts();
       if (!attract && game.hint && game.hint.text !== lastHint) { lastHint = game.hint.text; live.textContent = lastHint; }
       if (!game.hint) lastHint = '';
+      // a hint that names an eye also lights that eye's button
+      const want = !attract && phase === 'playing' && game.hint ? Object.values(ZONES).find((z) => z.hint === game.hint!.text)?.sensor ?? null : null;
+      const sug = want && want !== game.sensor ? want : null;
+      if (sug !== suggested) { suggested = sug; eyes.forEach((b) => b.classList.toggle('suggest', b.dataset.sensor === sug)); }
     }
     if (!attract && phase === 'playing' && !eyes.some((b) => b.classList.contains('on') && b.dataset.sensor === game.sensor)) setSensorUi();
   }
@@ -245,7 +265,7 @@ export function mountOrbitRun(root: HTMLElement, opts: { onExit(): void }): () =
   setSensorUi();
   raf = requestAnimationFrame(frame);
   // dev/QA hook (read-only access to state, plus a seed-able start)
-  (root as HTMLElement & { __orbit?: unknown }).__orbit = { get game() { return game; }, get phase() { return phase; }, get quality() { return quality; }, get fps() { return 1 / frameEma; }, start: startRun, ff(sec: number, pilot = true) { const was = game.easy; if (pilot) game.easy = true; for (let i = 0; i < sec / DT; i++) { step(game, DT, false); game.events.length = 0; } game.easy = was; }, setQuality(q: Quality) { quality = q; fx.quality = q; resize(); } };
+  (root as HTMLElement & { __orbit?: unknown }).__orbit = { get game() { return game; }, get phase() { return phase; }, get quality() { return quality; }, get fps() { return 1 / frameEma; }, get drawMs() { return drawMs; }, get texturesBusy() { return texturesBusy(); }, start: startRun, ff(sec: number, pilot = true) { const was = game.easy; if (pilot) game.easy = true; for (let i = 0; i < sec / DT; i++) { step(game, DT, false); game.events.length = 0; } game.easy = was; }, setQuality(q: Quality) { quality = q; fx.quality = q; resize(); } };
 
   function cleanup() {
     if (disposed) return;
